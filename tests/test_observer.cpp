@@ -104,3 +104,46 @@ TEST_CASE("Testing EventIndex") {
     CHECK(Observer::EventIndex<B,events_t>::value == 1);
 
 }
+
+
+TEST_CASE("Testing _Subject") {
+
+    //_Subject<typename _SubjectEvents>
+
+    struct A {};
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>;
+
+    //static object
+    CHECK(Observer::StaticObject<Observer::_Subject<events_t>>::AssertNoCopy());
+    CHECK(Observer::StaticObject<Observer::_Subject<events_t>>::AssertNoMove());
+
+    //default construction
+    using subject_t = Observer::_Subject<events_t>;
+    auto pSub = std::unique_ptr<subject_t>(new subject_t());
+   
+    //subcription
+    using observer_t = Observer::_Observer<events_t>;
+    auto pObs = std::unique_ptr<observer_t>(new observer_t());
+    //good event index succeeds:
+    CHECK(pSub->Attach(pObs.get(),0) == true);
+    CHECK(pSub->Attach(pObs.get(),1) == true);
+    //bad event index fails
+    CHECK(pSub->Attach(pObs.get(),2) == false);
+    //know current registration of observer
+    CHECK(pSub->nEvents(pObs.get())==2);
+    //already event does nothing;
+    CHECK(pSub->Attach(pObs.get(),0) == true);
+    CHECK(pSub->nEvents(pObs.get()) == 2);
+    
+    //multiple subscription
+    auto pObs2 = std::unique_ptr<observer_t>(new observer_t());
+    //any bad event -> global fail
+    CHECK(pSub->Attach(pObs2.get(),{0,2}) == false);
+    CHECK(pSub->nEvents(pObs2.get()) == 0);
+    //all good -> succeed
+    CHECK(pSub->Attach(pObs2.get(),{1}) == true);
+    CHECK(pSub->nEvents(pObs2.get()) == 1);
+
+
+}

@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <type_traits>
 #include <memory>
+#include <unordered_set>
+#include <unordered_map>
 
 
 //  An Implementation of the Observer Pattern;
@@ -30,6 +32,10 @@ struct SubjectEvents;
 
 template <typename E, typename _SubjectEvents>
 struct Event;
+
+template <typename _SubjectEvents>
+struct SubjectID;
+//can be queried from a Subject;
 
 
 
@@ -117,6 +123,13 @@ struct SubjectEvents
         return _ForEach<_IsDefined,Events...>::value;
     }
 
+    SubjectEvents() {
+        static_assert(AssertNoDuplicate(),
+            "ERROR SubjectEvents<...>: any event can appear only once");
+        static_assert(AssertAllDefined(),
+            "ERROR SubjectEvents<...>: all events must be defined (not just declared)");
+    }
+
 };
 
 
@@ -153,7 +166,7 @@ template <typename E, typename ... Events>
 struct Event< E, SubjectEvents<Events...> >
 {
     static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
-        "ERROR: Observer::Event<E,SubjectEvents<...>>: 'E' is not in the SubjectEvents list");
+        "ERROR Observer::Event<E,SubjectEvents<...>>: 'E' is not in the SubjectEvents list");
 };
 template <typename E, typename NotSubjectEvents>
 struct Event
@@ -179,6 +192,150 @@ struct EventIndex< Event, SubjectEvents<hEvent,rEvents...> >
 template <typename Event, typename ... rEvents>
 struct EventIndex< Event, SubjectEvents<Event,rEvents...> >
 { static constexpr size_t value = 0; };
+
+
+//
+//
+//
+
+
+template <typename T>
+struct StaticObject
+{
+    static constexpr bool AssertNoCopy() {
+        return !std::is_copy_constructible<T>::value && !std::is_copy_assignable<T>::value;
+    }
+    
+    static constexpr bool AssertNoMove() {
+        return !std::is_move_constructible<T>::value && !std::is_move_assignable<T>::value;
+    }
+};
+
+
+//
+//
+//
+
+
+template
+<
+    typename _SubjectEvents,
+    typename event_idx_t = size_t,
+    template <typename> class observers_T = std::unordered_set,
+    template <typename,typename> class event2observers_T = std::unordered_map,
+    template <typename,typename> class observer2count_T = std::unordered_map
+>
+struct _Subject;
+
+template <typename _SubjectEvents>
+struct _Observer;
+
+template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
+         template <typename,typename> class event2observers_T, template <typename,typename> class observer2count_T>
+struct _Subject
+< 
+    SubjectEvents<Events...>,
+    event_idx_t,
+    observers_T,
+    event2observers_T,
+    observer2count_T
+>
+: private StaticObject< _Subject<SubjectEvents<Events...>> >
+{
+    
+    _Subject(_Subject const&) = delete;
+    _Subject& operator=(_Subject const&) = delete;
+
+    _Subject(_Subject&&) = delete;
+    _Subject& operator=(_Subject&&) = delete;
+   
+    private:
+
+        using events_t = SubjectEvents<Events...>;
+
+        using pObs_t = _Observer<events_t>*;
+      
+        using observers_t = observers_T<pObs_t>;
+        using event2observers_t = event2observers_T<event_idx_t,observers_t>;
+        event2observers_t event2observers;
+
+        bool event_add_observer(event_idx_t eventIdx_, pObs_t pObs_)
+        {
+            auto const it = event2observers.find(eventIdx_);
+            if(it == event2observers.cend()) {
+                event2observers.insert(std::make_pair(eventIdx_,observers_t{ pObs_ }));
+                return true;
+            }
+            else {
+                auto const jt = it->second.find(pObs_);
+                if(jt == it->second.cend()) {
+                    it->second.insert(pObs_);
+                    return true;
+                }
+                else {
+                    //already subscribed
+                    return false;
+                }
+            }
+        }
+
+        using observer2count_t = observer2count_T<pObs_t,size_t>;
+        observer2count_t observer2count;
+        
+        void incr_observer_count(pObs_t pObs_, size_t n)
+        {
+            auto it = observer2count.find(pObs_);
+            if(it == observer2count.end()) { 
+                observer2count.insert(std::make_pair(pObs_,n));
+            }
+            else it->second += n;
+        }
+        
+        size_t read_observer_count(pObs_t pObs_) const
+        {
+            auto const it = observer2count.find(pObs_);
+            if(it==observer2count.cend()) return 0;
+            else return it->second;
+        }
+
+        //
+
+        void _Attach(pObs_t pObs_, event_idx_t eventIdx_)
+        {
+            if(event_add_observer(eventIdx_,pObs_)) incr_observer_count(pObs_,1);
+            else { /* already subscribed -> do nothing */ }
+        }
+
+
+    public:
+
+    _Subject() = default;
+
+    bool Attach(pObs_t pObs_, event_idx_t eventIdx_)
+    {
+        if(eventIdx_ >= sizeof...(Events)) return false;
+        _Attach(pObs_,eventIdx_); 
+        return true;
+    }
+
+    bool Attach(pObs_t pObs_, std::initializer_list<event_idx_t> eventIdxList_)
+    {
+        for(auto const eventIdx_ : eventIdxList_) { if(eventIdx_ >= sizeof...(Events)) return false; }
+        for(auto const eventIdx_ : eventIdxList_) { _Attach(pObs_,eventIdx_); }
+        return true;
+    }
+
+    size_t nEvents(pObs_t pObs_) const
+    {
+        return read_observer_count(pObs_);
+    }
+
+};
+
+
+template <typename _SubjectEvents>
+struct _Observer
+{};
 
 
 }//close Observer
