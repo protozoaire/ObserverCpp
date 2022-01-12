@@ -1,7 +1,7 @@
-#ifndef OBSERVER_HPP
-  #define OBSERVER_HPP 0
-  #define OBSERVER_CTX
-////////////////////////////
+#ifndef OBSERVER
+#  define OBSERVER
+#  define OBSERVER_INCOMPLETE
+///////////////////////////////
 
 
 #include <cstddef>
@@ -29,14 +29,6 @@ namespace Observer {
 
 template <typename ... Events>
 struct SubjectEvents;
-
-template <typename E, typename _SubjectEvents>
-struct Event;
-
-template <typename _SubjectEvents>
-struct SubjectID;
-//can be queried from a Subject;
-
 
 
 //
@@ -161,6 +153,8 @@ struct IsSupportedEvent
 //
 //
 
+template <typename E, typename _SubjectEvents>
+struct Event;
 
 template <typename E, typename ... Events>
 struct Event< E, SubjectEvents<Events...> >
@@ -168,6 +162,7 @@ struct Event< E, SubjectEvents<Events...> >
     static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
         "ERROR Observer::Event<E,SubjectEvents<...>>: 'E' is not in the SubjectEvents list");
 };
+
 template <typename E, typename NotSubjectEvents>
 struct Event
 {
@@ -192,24 +187,6 @@ struct EventIndex< Event, SubjectEvents<hEvent,rEvents...> >
 template <typename Event, typename ... rEvents>
 struct EventIndex< Event, SubjectEvents<Event,rEvents...> >
 { static constexpr size_t value = 0; };
-
-
-//
-//
-//
-
-
-template <typename T>
-struct StaticObject
-{
-    static constexpr bool AssertNoCopy() {
-        return !std::is_copy_constructible<T>::value && !std::is_copy_assignable<T>::value;
-    }
-    
-    static constexpr bool AssertNoMove() {
-        return !std::is_move_constructible<T>::value && !std::is_move_assignable<T>::value;
-    }
-};
 
 
 //
@@ -385,8 +362,8 @@ struct _Subject
 };
 
 
-template <typename _SubjectEvents>
-struct _Observer
+template <typename ... Events>
+struct _Observer< SubjectEvents<Events...> >
 {
 
     _Observer(_Observer const&) = delete;
@@ -395,15 +372,24 @@ struct _Observer
     _Observer(_Observer&&) = delete;
     _Observer& operator=(_Observer&&) = delete;
  
-    
     private:
 
         using events_t = SubjectEvents<Events...>;
+        
+        using pSub_t = _Subject<events_t>*;
 
-    
     public:
 
     _Observer() = default;
+
+    template <typename E,
+             typename = typename std::enable_if<IsSupportedEvent<E,events_t>::value>::type>
+    void onEvent(E, pSub_t const*)
+    {
+        //pour chaque sId, on est susceptible d'enregistrer un behaviour object;
+
+        //if(pBeh) pBeh->onEvent(
+    }
 
 };
 
@@ -411,12 +397,10 @@ struct _Observer
 }//close Observer
 
 
-////////////////////////////
-#undef OBSERVER_CTX
-#undef OBSERVER_HPP
-  #define OBSERVER_HPP 1
+///////////////////////////////
+#  undef OBSERVER_INCOMPLETE
 #else
-  #if OBSERVER_HPP == 0
-  #error incomplete include of "observer.hpp"
-  #endif
+#  ifdef OBSERVER_INCOMPLETE
+#    error circular inclusion of observer.hpp
+#  endif
 #endif

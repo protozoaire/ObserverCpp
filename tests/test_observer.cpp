@@ -106,6 +106,19 @@ TEST_CASE("Testing EventIndex") {
 }
 
 
+template <typename T>
+struct StaticObject
+{
+    static constexpr bool AssertNoCopy() {
+        return !std::is_copy_constructible<T>::value && !std::is_copy_assignable<T>::value;
+    }
+    
+    static constexpr bool AssertNoMove() {
+        return !std::is_move_constructible<T>::value && !std::is_move_assignable<T>::value;
+    }
+};
+
+
 TEST_CASE("Testing _Subject / Create") {
 
     //_Subject<typename _SubjectEvents>
@@ -115,8 +128,8 @@ TEST_CASE("Testing _Subject / Create") {
     using events_t = Observer::SubjectEvents<A,B>;
 
     //static object
-    CHECK(Observer::StaticObject<Observer::_Subject<events_t>>::AssertNoCopy());
-    CHECK(Observer::StaticObject<Observer::_Subject<events_t>>::AssertNoMove());
+    CHECK(StaticObject<Observer::_Subject<events_t>>::AssertNoCopy());
+    CHECK(StaticObject<Observer::_Subject<events_t>>::AssertNoMove());
 
 }
 
@@ -210,9 +223,37 @@ TEST_CASE("Testing _Observer / Create") {
     using events_t = Observer::SubjectEvents<A,B>;
 
     //static object
-    CHECK(Observer::StaticObject<Observer::_Observer<events_t>>::AssertNoCopy());
-    CHECK(Observer::StaticObject<Observer::_Observer<events_t>>::AssertNoMove());
+    CHECK(StaticObject<Observer::_Observer<events_t>>::AssertNoCopy());
+    CHECK(StaticObject<Observer::_Observer<events_t>>::AssertNoMove());
 
 }
 
 
+template <typename E, typename _SubjectEvents>
+struct onEventExists
+{
+    using O = Observer::_Observer<_SubjectEvents>;
+    
+    template <typename T = E, 
+        typename = decltype(std::declval<O*>()->onEvent(std::declval<T const&>(),nullptr))>
+    static std::true_type test(int);
+
+    static std::false_type test(...);
+
+    static constexpr bool value = decltype(test(0))::value;
+};
+
+
+TEST_CASE("Testing _Observer / onEvent methods") {
+
+    struct A {};
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>;
+    struct C {};
+
+    //methods exist
+    CHECK(onEventExists<A,events_t>::value == true);
+    CHECK(onEventExists<B,events_t>::value == true);
+    CHECK(onEventExists<C,events_t>::value == false);
+
+}
