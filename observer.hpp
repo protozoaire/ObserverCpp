@@ -231,7 +231,8 @@ template <typename _SubjectEvents>
 struct _Observer;
 
 template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
-         template <typename,typename> class event2observers_T, template <typename,typename> class observer2count_T>
+         template <typename,typename> class event2observers_T, 
+         template <typename,typename> class observer2count_T>
 struct _Subject
 < 
     SubjectEvents<Events...>,
@@ -240,7 +241,6 @@ struct _Subject
     event2observers_T,
     observer2count_T
 >
-: private StaticObject< _Subject<SubjectEvents<Events...>> >
 {
     
     _Subject(_Subject const&) = delete;
@@ -279,6 +279,26 @@ struct _Subject
             }
         }
 
+        bool event_del_observer(event_idx_t eventIdx_, pObs_t pObs_)
+        {
+            auto const it = event2observers.find(eventIdx_);
+            if(it == event2observers.cend()) {
+                //not subscribed by anybody
+                return false;
+            }
+            else {
+                auto const jt = it->second.find(pObs_);
+                if(jt == it->second.cend()) {
+                    //not subscribed
+                    return false;
+                }
+                else {
+                    it->second.erase(jt);
+                    return true;
+                }
+            }
+        }
+
         using observer2count_t = observer2count_T<pObs_t,size_t>;
         observer2count_t observer2count;
         
@@ -290,7 +310,20 @@ struct _Subject
             }
             else it->second += n;
         }
-        
+ 
+        void decr_observer_count(pObs_t pObs_, size_t n)
+        {
+            auto it = observer2count.find(pObs_);
+            if(it == observer2count.end()) { /* nothing to do */ }
+            else {
+                if(it->second <= n) {
+                    /* clean up observer */
+                    observer2count.erase(it); 
+                }
+                else it->second -= n;
+            }
+        }
+       
         size_t read_observer_count(pObs_t pObs_) const
         {
             auto const it = observer2count.find(pObs_);
@@ -306,6 +339,11 @@ struct _Subject
             else { /* already subscribed -> do nothing */ }
         }
 
+        void _Detach(pObs_t pObs_, event_idx_t eventIdx_)
+        {
+            if(event_del_observer(eventIdx_,pObs_)) decr_observer_count(pObs_,1);
+            else { /* not subscribed -> do nothing */ }
+        }
 
     public:
 
@@ -318,10 +356,24 @@ struct _Subject
         return true;
     }
 
+    bool Detach(pObs_t pObs_, event_idx_t eventIdx_)
+    {
+        if(eventIdx_ >= sizeof...(Events)) return false;
+        _Detach(pObs_,eventIdx_);
+        return true;
+    }
+
     bool Attach(pObs_t pObs_, std::initializer_list<event_idx_t> eventIdxList_)
     {
         for(auto const eventIdx_ : eventIdxList_) { if(eventIdx_ >= sizeof...(Events)) return false; }
         for(auto const eventIdx_ : eventIdxList_) { _Attach(pObs_,eventIdx_); }
+        return true;
+    }
+
+    bool Detach(pObs_t pObs_, std::initializer_list<event_idx_t> eventIdxList_)
+    {
+        for(auto const eventIdx_ : eventIdxList_) { if(eventIdx_ >= sizeof...(Events)) return false; }
+        for(auto const eventIdx_ : eventIdxList_) { _Detach(pObs_,eventIdx_); }
         return true;
     }
 
@@ -335,7 +387,25 @@ struct _Subject
 
 template <typename _SubjectEvents>
 struct _Observer
-{};
+{
+
+    _Observer(_Observer const&) = delete;
+    _Observer& operator=(_Observer const&) = delete;
+
+    _Observer(_Observer&&) = delete;
+    _Observer& operator=(_Observer&&) = delete;
+ 
+    
+    private:
+
+        using events_t = SubjectEvents<Events...>;
+
+    
+    public:
+
+    _Observer() = default;
+
+};
 
 
 }//close Observer
