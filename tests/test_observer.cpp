@@ -234,8 +234,7 @@ struct onEventExists
 {
     using O = Observer::_Observer<_SubjectEvents>;
     
-    template <typename T = E, 
-        typename = decltype(std::declval<O*>()->onEvent(std::declval<T const&>(),nullptr))>
+    template <typename T = E, void (O::*)(T) = &O::template onEvent<T>>
     static std::true_type test(int);
 
     static std::false_type test(...);
@@ -256,4 +255,74 @@ TEST_CASE("Testing _Observer / onEvent methods") {
     CHECK(onEventExists<B,events_t>::value == true);
     CHECK(onEventExists<C,events_t>::value == false);
 
+}
+
+
+template <typename E, typename _SubjectEvents>
+struct bindHandlerExists
+{
+    using O = Observer::_Observer<_SubjectEvents>;
+    
+    template <typename T = E, void (O::*)(std::function<void(T)>*) = &O::template bindHandler<T>>
+    static std::true_type test(int);
+
+    static std::false_type test(...);
+
+    static constexpr bool value = decltype(test(0))::value;
+};
+
+
+TEST_CASE("Testing _Observer / handlers") {
+
+    struct A { size_t value; };
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>;
+    struct C {};
+
+    //binding methods exist
+    CHECK(bindHandlerExists<A,events_t>::value == true);
+    CHECK(bindHandlerExists<B,events_t>::value == true);
+    CHECK(bindHandlerExists<C,events_t>::value == false);
+
+    using observer_t = Observer::_Observer<events_t>;
+    
+    //handler for event A
+    size_t accA = 0;
+    std::function<void(A)> handlerA = [&accA](A a){ accA += a.value; };
+    observer_t obs;
+    obs.bindHandler(&handlerA);
+    CHECK(accA == 0);
+    obs.onEvent(A{2});
+    CHECK(accA == 2);
+    obs.onEvent(A{3});
+    CHECK(accA == 5);
+
+    //redefine handlerA
+    handlerA = [&accA](A a){ accA -= a.value; };
+    obs.onEvent(A{2});
+    CHECK(accA == 3);
+
+    //add handler for B
+    size_t nB = 0;
+    std::function<void(B)> handlerB = [&nB](B){ ++nB; };
+    obs.bindHandler(&handlerB);
+    CHECK(nB == 0);
+    obs.onEvent(B());
+    CHECK(nB == 1);
+
+    //handler for A still works
+    obs.onEvent(A{2});
+    CHECK(accA == 1);
+
+    //handler and virtual calls
+    struct H { virtual void event(A) {} };
+    struct h : H {
+        size_t value = 0;
+        virtual void event(A a) override { value += a.value; }
+    };
+    auto pObjH = std::unique_ptr<H>(new h());
+    handlerA = [&pObjH](A a){ pObjH->event(a); };
+    obs.onEvent(A{2});
+    CHECK(static_cast<h*>(pObjH.get())->value == 2);
+    
 }

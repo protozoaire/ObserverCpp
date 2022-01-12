@@ -7,33 +7,12 @@
 #include <cstddef>
 #include <type_traits>
 #include <memory>
+#include <variant>
 #include <unordered_set>
 #include <unordered_map>
 
 
-//  An Implementation of the Observer Pattern;
-//
-//  USAGE:
-//  
-//  - One creates an events's set, e.g.
-//      
-//      struct Event0 { ... };
-//      struct Event1 { ... };
-//      ...
-//
-//      using events_t = SubjectEvents<Event0,Event1,...>;
-
-
 namespace Observer {
-
-
-template <typename ... Events>
-struct SubjectEvents;
-
-
-//
-//
-//
 
 
 template <typename E, typename ... List>
@@ -204,8 +183,13 @@ template
 >
 struct _Subject;
 
-template <typename _SubjectEvents>
+
+template
+<
+    typename _SubjectEvents
+>
 struct _Observer;
+
 
 template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
          template <typename,typename> class event2observers_T, 
@@ -375,20 +359,26 @@ struct _Observer< SubjectEvents<Events...> >
     private:
 
         using events_t = SubjectEvents<Events...>;
-        
-        using pSub_t = _Subject<events_t>*;
+
+        using opaque_handler_t = std::function<void(void*)>;
+        opaque_handler_t handlers [sizeof...(Events)];
 
     public:
 
     _Observer() = default;
 
-    template <typename E,
-             typename = typename std::enable_if<IsSupportedEvent<E,events_t>::value>::type>
-    void onEvent(E, pSub_t const*)
+    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
+    void onEvent(E data)
     {
-        //pour chaque sId, on est susceptible d'enregistrer un behaviour object;
+        static constexpr auto i = EventIndex<E,events_t>::value;
+        handlers[i](&data);
+    }
 
-        //if(pBeh) pBeh->onEvent(
+    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
+    void bindHandler(std::function<void(E)>* pFunc)
+    {
+        static constexpr auto i = EventIndex<E,events_t>::value;
+        handlers[i] = [pFunc](void* pE){ (*pFunc)(*static_cast<E*>(pE)); };
     }
 
 };
