@@ -143,30 +143,30 @@ TEST_CASE("Testing _Subject / Subscribe") {
     using subject_t = Observer::_Subject<events_t>;
     using observer_t = Observer::_Observer<events_t>;
     
-    auto pSub = std::unique_ptr<subject_t>(new subject_t());
-    auto pObs = std::unique_ptr<observer_t>(new observer_t());
+    subject_t sub;
+    observer_t obs;
     //good event index succeeds:
-    CHECK(pSub->Attach(pObs.get(),0) == true);
-    CHECK(pSub->Attach(pObs.get(),1) == true);
+    CHECK(sub.Attach(&obs,0) == true);
+    CHECK(sub.Attach(&obs,1) == true);
     //bad event index fails
-    CHECK(pSub->Attach(pObs.get(),2) == false);
+    CHECK(sub.Attach(&obs,2) == false);
     //know current registration of observer
-    CHECK(pSub->nEvents(pObs.get())==2);
+    CHECK(sub.nEvents(&obs)==2);
     //already event does nothing;
-    CHECK(pSub->Attach(pObs.get(),0) == true);
-    CHECK(pSub->nEvents(pObs.get()) == 2);
+    CHECK(sub.Attach(&obs,0) == true);
+    CHECK(sub.nEvents(&obs) == 2);
 
     //multiple subscription
-    auto pObs2 = std::unique_ptr<observer_t>(new observer_t());
+    observer_t obs2;
     //any bad event -> global fail
-    CHECK(pSub->Attach(pObs2.get(),{0,2}) == false);
-    CHECK(pSub->nEvents(pObs2.get()) == 0);
+    CHECK(sub.Attach(&obs2,{0,2}) == false);
+    CHECK(sub.nEvents(&obs2) == 0);
     //all good -> succeed
-    CHECK(pSub->Attach(pObs2.get(),{1}) == true);
-    CHECK(pSub->nEvents(pObs2.get()) == 1);
+    CHECK(sub.Attach(&obs2,{1}) == true);
+    CHECK(sub.nEvents(&obs2) == 1);
     //all good / redundant -> succeed
-    CHECK(pSub->Attach(pObs2.get(),{1,1}) == true);
-    CHECK(pSub->nEvents(pObs2.get()) == 1);
+    CHECK(sub.Attach(&obs2,{1,1}) == true);
+    CHECK(sub.nEvents(&obs2) == 1);
 
 }
 
@@ -180,36 +180,36 @@ TEST_CASE("Testing _Subject / Unsubscribe") {
     using subject_t = Observer::_Subject<events_t>;
     using observer_t = Observer::_Observer<events_t>;
 
-    auto pSub = std::unique_ptr<subject_t>(new subject_t());
-    auto pObs = std::unique_ptr<observer_t>(new observer_t());
-    CHECK(pSub->Attach(pObs.get(),0) == true);
-    CHECK(pSub->nEvents(pObs.get()) == 1);
+    subject_t sub;
+    observer_t obs;
+    CHECK(sub.Attach(&obs,0) == true);
+    CHECK(sub.nEvents(&obs) == 1);
     //bad event fails (count not changed) 
-    CHECK(pSub->Detach(pObs.get(),2) == false);
-    CHECK(pSub->nEvents(pObs.get()) == 1);
+    CHECK(sub.Detach(&obs,2) == false);
+    CHECK(sub.nEvents(&obs) == 1);
     //unsubscribed event succeeds (count not changed) 
-    CHECK(pSub->Detach(pObs.get(),1) == true);
-    CHECK(pSub->nEvents(pObs.get()) == 1);
+    CHECK(sub.Detach(&obs,1) == true);
+    CHECK(sub.nEvents(&obs) == 1);
     //subscribed event succeeds (count changed)
-    CHECK(pSub->Detach(pObs.get(),0) == true);
-    CHECK(pSub->nEvents(pObs.get()) == 0);
+    CHECK(sub.Detach(&obs,0) == true);
+    CHECK(sub.nEvents(&obs) == 0);
     //unregistered observer succeeds
-    auto pObs2 = std::unique_ptr<observer_t>(new observer_t());
-    CHECK(pSub->Detach(pObs2.get(),0) == true);
-    CHECK(pSub->nEvents(pObs2.get()) == 0);
+    observer_t obs2;
+    CHECK(sub.Detach(&obs2,0) == true);
+    CHECK(sub.nEvents(&obs2) == 0);
 
     //multiple unsubscribe
-    auto pObs3 = std::unique_ptr<observer_t>(new observer_t());
-    CHECK(pSub->Attach(pObs3.get(),{0,1}) == true);
+    observer_t obs3;
+    CHECK(sub.Attach(&obs3,{0,1}) == true);
     //any bad event -> global fail (count not changed)
-    CHECK(pSub->Detach(pObs3.get(),{1,2}) == false);
-    CHECK(pSub->nEvents(pObs3.get()) == 2);
+    CHECK(sub.Detach(&obs3,{1,2}) == false);
+    CHECK(sub.nEvents(&obs3) == 2);
     //all good -> succeed
-    CHECK(pSub->Detach(pObs3.get(),{0}) == true);
-    CHECK(pSub->nEvents(pObs3.get()) == 1);
+    CHECK(sub.Detach(&obs3,{0}) == true);
+    CHECK(sub.nEvents(&obs3) == 1);
     //all good / redundant -> succeed
-    CHECK(pSub->Detach(pObs3.get(),{1,1}) == true);
-    CHECK(pSub->nEvents(pObs3.get()) == 0);
+    CHECK(sub.Detach(&obs3,{1,1}) == true);
+    CHECK(sub.nEvents(&obs3) == 0);
 
 }
 
