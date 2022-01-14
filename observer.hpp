@@ -173,6 +173,116 @@ struct EventIndex< Event, SubjectEvents<Event,rEvents...> >
 //
 
 
+struct NoCopy
+{
+    NoCopy(NoCopy const&) = delete;
+    NoCopy& operator=(NoCopy const&) = delete;
+
+    NoCopy(NoCopy&&) = delete;
+    NoCopy& operator=(NoCopy&&) = delete;
+
+    protected:
+    NoCopy() = default;
+};
+
+
+//
+//
+//
+
+
+template <typename T>
+struct AbstractSet
+{
+    std::function<bool(T)> Append;
+    std::function<bool(T)> Remove;
+    std::function<bool(T)> Exists;
+    using F = std::function<void(T)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename T>
+AbstractSet<T> abstract_view(std::unordered_set<T>& set)
+{
+    auto append = [&set](T t){ return set.insert(t).second; };
+    auto remove = [&set](T t){ return set.erase(t)==1; };
+    auto exists = [&set](T t){ return set.count(t)>0; };
+    using F = std::function<void(T)>;
+    auto signal = [&set](F f){ for(auto t : set) f(t); };
+    return {append,remove,exists,signal};
+};
+ 
+
+//
+//
+//
+
+
+template <typename E, typename _SubjectEvents>
+struct _Observer1;
+
+template <typename E, typename _SubjectEvents>
+struct _Subject1
+: private NoCopy
+{
+    private:
+
+        using pObs_t = _Observer1<E,_SubjectEvents>*;
+        using observers_t = AbstractSet<pObs_t>;
+        observers_t observers;
+
+    public:
+
+    explicit _Subject1(observers_t&& observers_)
+    : NoCopy()
+    , observers(std::move(observers_))
+    {}
+
+    bool Attach(pObs_t pObs) 
+    { return observers.Append(pObs); }
+
+    bool Detach(pObs_t pObs)
+    { return observers.Remove(pObs); }
+
+    void Notify(E e) const
+    { observers.Signal([e,this](pObs_t pObs){ pObs->onEvent(e,this); }); }
+
+};  
+
+template <typename E, typename _SubjectEvents>
+struct _Observer1
+: private NoCopy
+{
+    private:
+
+        using pSub_t = _Subject1<E,_SubjectEvents> const*;
+        /*
+        using pSub_t = _Subject1<E,_SubjectEvents>*;
+        using subjects_t = AbstractSet<pSub_t>;
+        subjects_t subjects;
+        */
+        using handler_t = std::function<void(E)>;
+        handler_t handler = [](E){};
+
+    public:
+
+    _Observer1() = default;
+    
+    void onEvent(E e, pSub_t = nullptr)
+    { handler(e); }
+
+    _Observer1& bindHandler(handler_t handler_)
+    { handler = handler_; return *this; }
+
+};
+
+
+//
+//
+//
+
+
 template
 <
     typename _SubjectEvents,
@@ -183,13 +293,11 @@ template
 >
 struct _Subject;
 
-
 template
 <
     typename _SubjectEvents
 >
 struct _Observer;
-
 
 template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
          template <typename,typename> class event2observers_T, 
@@ -361,7 +469,7 @@ struct _Observer< SubjectEvents<Events...> >
         using events_t = SubjectEvents<Events...>;
 
         using opaque_handler_t = std::function<void(void*)>;
-        opaque_handler_t handlers [sizeof...(Events)];
+        opaque_handler_t handlers [sizeof...(Events)] = { nullptr };
 
     public:
 

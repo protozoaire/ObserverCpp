@@ -106,8 +106,60 @@ TEST_CASE("Testing EventIndex") {
 }
 
 
+TEST_CASE("Testing AbstractSet") {
+
+    //AbstractSet<typename T>
+    std::unordered_set<int> set;
+    Observer::AbstractSet<int> Set;
+    
+    auto _append = [&set](int i){ return set.insert(i).second; };
+    Set.Append = _append;
+    CHECK(Set.Append(3)==true);
+    CHECK(set.count(3)==1);
+    CHECK(set.size()==1);
+    CHECK(Set.Append(3)==false);//already in
+
+    auto _exists = [&set](int i){ return set.count(i)>0; };
+    Set.Exists = _exists;
+    CHECK(Set.Exists(3)==true);
+   
+    set.insert(1);
+    auto _remove = [&set](int i){ return set.erase(i)==1; };
+    CHECK(set.count(1)==1);
+    Set.Remove = _remove;
+    CHECK(Set.Remove(1)==true);
+    CHECK(set.count(1)==0);
+    CHECK(Set.Remove(2)==false);//never added
+
+    using F = std::function<void(int)>;
+    auto _signal = [&set](F f){ for(auto t : set) f(t); };
+    Set.Signal = _signal;
+    int n = 0;
+    auto f = [&n](int i){ n+=i; };
+    Set.Signal(f);
+    CHECK(n==3);
+    CHECK(Set.Append(1)==true);
+    Set.Signal(f);
+    CHECK(n==7);
+    CHECK(Set.Remove(1)==true);
+
+    //constructing with abstract_view
+    Set = Observer::abstract_view(set);
+    CHECK(set.size()==1);//3 is still in
+    CHECK(Set.Remove(2)==false);//not there
+    CHECK(Set.Remove(3)==true);
+    CHECK(Set.Append(1)==true);
+    CHECK(Set.Exists(1)==true);
+    n = 2;
+    auto g = [&n](int i){ n+=2*i; };
+    Set.Signal(g);
+    CHECK(n==4);
+
+}
+
+
 template <typename T>
-struct StaticObject
+struct TestNoCopy
 {
     static constexpr bool AssertNoCopy() {
         return !std::is_copy_constructible<T>::value && !std::is_copy_assignable<T>::value;
@@ -119,6 +171,104 @@ struct StaticObject
 };
 
 
+TEST_CASE("Testing _Subject1 / Attach, Detach") {
+
+    //_Subject1<typename E, typename _SubjectEvents>
+    struct A { int value; };
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>; 
+    using _subject1_t = Observer::_Subject1<A,events_t>;
+    using _observer1_t = Observer::_Observer1<A,events_t>;
+
+    //static object
+    CHECK(TestNoCopy<_subject1_t>::AssertNoCopy());
+    CHECK(TestNoCopy<_subject1_t>::AssertNoMove());
+   
+    //Attach
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_view(set));
+    _observer1_t obs; 
+    CHECK(set.size()==0);
+    CHECK(subA.Attach(&obs)==true);
+    CHECK(set.size()==1);
+    _observer1_t obs2;
+    CHECK(subA.Attach(&obs2)==true);
+    CHECK(set.size()==2);
+    CHECK(subA.Attach(&obs2)==false);//already attached fails
+    CHECK(set.size()==2);
+    
+    //Detach
+    CHECK(subA.Detach(&obs)==true);
+    CHECK(set.size()==1);
+    _observer1_t obs3;
+    CHECK(subA.Detach(&obs3)==false);//never attached fails
+    CHECK(set.size()==1);
+
+}
+
+
+TEST_CASE("Testing _Observer1 / Notify") {
+
+    //_Observer1<typename E, typename _SubjectEvents>
+    struct A { int value; };
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>; 
+    using _subject1_t = Observer::_Subject1<A,events_t>;
+    using _observer1_t = Observer::_Observer1<A,events_t>;
+
+    //static object
+    CHECK(TestNoCopy<_observer1_t>::AssertNoCopy());
+    CHECK(TestNoCopy<_observer1_t>::AssertNoMove());
+    
+    //observer onEvent
+    _observer1_t obs;
+    obs.onEvent(A{1});
+
+    //observer bindHandler;
+    int n = 0;
+    auto h = [&n](A a){ n+=a.value; };
+    auto h2 = [&n](A a){ n+=a.value*2; };
+    obs.bindHandler(h).bindHandler(h2);//h2 should be in effect
+    obs.onEvent(A{1});
+    CHECK(n==2);
+    obs.onEvent(A{2});
+    CHECK(n==6);
+
+    //through Notify
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_view(set));
+    CHECK(subA.Attach(&obs)==true);
+    subA.Notify(A{3});
+    CHECK(n==12);
+    obs.bindHandler(h);
+    subA.Notify(A{4});
+    CHECK(n==16);
+
+    //Notify to multiple observers
+    _observer1_t obs2;
+    obs2.bindHandler(h2);
+    CHECK(subA.Attach(&obs2)==true);
+    n = 0;
+    subA.Notify(A{5});
+    CHECK(n==15);
+    CHECK(subA.Detach(&obs2)==true);
+    subA.Notify(A{5});
+    CHECK(n==20); 
+
+}
+
+
+template <typename O, typename E>
+struct onEventExists
+{
+    template <typename T = E, void (O::*)(T) = &O::template onEvent<T>>
+    static std::true_type test(int);
+
+    static std::false_type test(...);
+
+    static constexpr bool value = decltype(test(0))::value;
+};
+
 TEST_CASE("Testing _Subject / Create") {
 
     //_Subject<typename _SubjectEvents>
@@ -128,8 +278,8 @@ TEST_CASE("Testing _Subject / Create") {
     using events_t = Observer::SubjectEvents<A,B>;
 
     //static object
-    CHECK(StaticObject<Observer::_Subject<events_t>>::AssertNoCopy());
-    CHECK(StaticObject<Observer::_Subject<events_t>>::AssertNoMove());
+    CHECK(TestNoCopy<Observer::_Subject<events_t>>::AssertNoCopy());
+    CHECK(TestNoCopy<Observer::_Subject<events_t>>::AssertNoMove());
 
 }
 
@@ -223,24 +373,12 @@ TEST_CASE("Testing _Observer / Create") {
     using events_t = Observer::SubjectEvents<A,B>;
 
     //static object
-    CHECK(StaticObject<Observer::_Observer<events_t>>::AssertNoCopy());
-    CHECK(StaticObject<Observer::_Observer<events_t>>::AssertNoMove());
+    CHECK(TestNoCopy<Observer::_Observer<events_t>>::AssertNoCopy());
+    CHECK(TestNoCopy<Observer::_Observer<events_t>>::AssertNoMove());
 
 }
 
 
-template <typename E, typename _SubjectEvents>
-struct onEventExists
-{
-    using O = Observer::_Observer<_SubjectEvents>;
-    
-    template <typename T = E, void (O::*)(T) = &O::template onEvent<T>>
-    static std::true_type test(int);
-
-    static std::false_type test(...);
-
-    static constexpr bool value = decltype(test(0))::value;
-};
 
 
 TEST_CASE("Testing _Observer / onEvent methods") {
@@ -249,11 +387,12 @@ TEST_CASE("Testing _Observer / onEvent methods") {
     struct B {};
     using events_t = Observer::SubjectEvents<A,B>;
     struct C {};
+    using O = Observer::_Observer<events_t>;
 
     //methods exist
-    CHECK(onEventExists<A,events_t>::value == true);
-    CHECK(onEventExists<B,events_t>::value == true);
-    CHECK(onEventExists<C,events_t>::value == false);
+    CHECK(onEventExists<O,A>::value == true);
+    CHECK(onEventExists<O,B>::value == true);
+    CHECK(onEventExists<O,C>::value == false);
 
 }
 
