@@ -119,10 +119,6 @@ TEST_CASE("Testing AbstractSet") {
     CHECK(set.size()==1);
     CHECK(Set.Append(3)==false);//already in
 
-    auto _exists = [&set](int i){ return set.count(i)>0; };
-    Set.Exists = _exists;
-    CHECK(Set.Exists(3)==true);
-   
     set.insert(1);
     auto _remove = [&set](int i){ return set.erase(i)==1; };
     CHECK(set.count(1)==1);
@@ -149,11 +145,63 @@ TEST_CASE("Testing AbstractSet") {
     CHECK(Set.Remove(2)==false);//not there
     CHECK(Set.Remove(3)==true);
     CHECK(Set.Append(1)==true);
-    CHECK(Set.Exists(1)==true);
+    CHECK(set.count(1)>0);
     n = 2;
     auto g = [&n](int i){ n+=2*i; };
     Set.Signal(g);
     CHECK(n==4);
+
+}
+
+
+TEST_CASE("Testing AbstractMap") {
+
+    //AbstractMap<typename T>
+    std::unordered_map<char,int> map;
+    Observer::AbstractMap<char,int> Map;
+    
+    auto _define = [&map](char c, int i) { map.insert_or_assign(c,i); return true; };
+    Map.Define = _define;
+    CHECK(Map.Define('a',1)==true);
+    CHECK(map.count('a')>0);
+    CHECK(map.size()==1);
+    CHECK(Map.Define('a',2)==true);
+    CHECK(map.size()==1);
+    CHECK(map['a']==2);
+    
+    map.insert_or_assign('b',3);
+    auto _remove = [&map](char i) { return map.erase(i)==1; };
+    CHECK(map.count('b')==1);
+    Map.Remove = _remove;
+    CHECK(Map.Remove('b')==true);
+    CHECK(map.count('b')==0);
+    CHECK(Map.Remove('b')==false);//already removed
+    CHECK(Map.Remove('c')==false);//never defined
+    
+    using F = std::function<void(char,int)>;
+    auto _signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    Map.Signal = _signal;
+    int n = 0;
+    auto f = [&n](char, int i){ n += i; };
+    Map.Signal(f);
+    CHECK(map.size()==1);
+    CHECK(map.count('a')>0);
+    CHECK(n==2);
+    CHECK(Map.Define('b',5));
+    Map.Signal(f);
+    CHECK(n==9);
+
+    //constructing from abstract_view
+    Map = Observer::abstract_view(map);
+    CHECK(map.size()==2);
+    CHECK(Map.Remove('c')==false);//not there
+    CHECK(Map.Remove('b')==true);
+    CHECK(map.count('a')>0);//still here, with value 2
+    CHECK(Map.Define('c',3)==true);//new entry
+    n = 1;
+    auto g = [&n](char, int i){ n+=2*i; };
+    Map.Signal(g);
+    CHECK(n==(1+2*2+2*3));
 
 }
 

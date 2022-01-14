@@ -196,7 +196,6 @@ struct AbstractSet
 {
     std::function<bool(T)> Append;
     std::function<bool(T)> Remove;
-    std::function<bool(T)> Exists;
     using F = std::function<void(T)>;
     std::function<void(F)> Signal;
 };
@@ -207,12 +206,37 @@ AbstractSet<T> abstract_view(std::unordered_set<T>& set)
 {
     auto append = [&set](T t){ return set.insert(t).second; };
     auto remove = [&set](T t){ return set.erase(t)==1; };
-    auto exists = [&set](T t){ return set.count(t)>0; };
     using F = std::function<void(T)>;
     auto signal = [&set](F f){ for(auto t : set) f(t); };
-    return {append,remove,exists,signal};
+    return {append,remove,signal};
 };
  
+
+//
+//
+//
+
+
+template <typename K, typename V>
+struct AbstractMap
+{
+    std::function<bool(K,V)> Define;
+    std::function<bool(K)> Remove;
+    using F = std::function<void(K,V)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename K, typename V>
+AbstractMap<K,V> abstract_view(std::unordered_map<K,V>& map)
+{
+    auto define = [&map](K k, V v) { map.insert_or_assign(k,v); return true; };
+    auto remove = [&map](K k) { return map.erase(k)==1; };
+    using F = std::function<void(K,V)>; 
+    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    return {define,remove,signal};
+};
+
 
 //
 //
