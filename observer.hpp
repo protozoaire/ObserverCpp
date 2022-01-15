@@ -291,8 +291,12 @@ struct _Subject1
     bool Detach(pObs_t pObs)
     { return observers.Remove(pObs); }
 
-    void Notify(E e) const
+    void Notify(E e)
     { observers.Signal([e,this](pObs_t pObs){ pObs->onEvent(e,this); }); }
+    /* Note: not const; Observers may respond by Detaching. */
+
+    _Subject1& bindObserverSet(observers_t observers_)
+    { observers = observers_; return *this; }
 
 };  
 
@@ -302,7 +306,7 @@ struct _Observer1
 {
     private:
 
-        using pSub_t = _Subject1<E,_SubjectEvents> const*;
+        using pSub_t = _Subject1<E,_SubjectEvents>*;
         using handler_t = std::function<void(E)>;
         using subject_handlers_t = AbstractLookup<pSub_t,handler_t>;
         subject_handlers_t subject_handlers = { [](pSub_t){ return [](E){}; } };

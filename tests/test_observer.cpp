@@ -319,9 +319,6 @@ TEST_CASE("Testing _Observer1 / Notify") {
     obs.onEvent(A{2});
     CHECK(n==6);
 
-    //observer bindSubjectHandlers;
-
-
     //through Notify
     std::unordered_set<_observer1_t*> set;
     _subject1_t subA(Observer::abstract_set_view(set));
@@ -342,6 +339,52 @@ TEST_CASE("Testing _Observer1 / Notify") {
     CHECK(subA.Detach(&obs2)==true);
     subA.Notify(A{5});
     CHECK(n==20); 
+
+    //observer bindSubjectHandlers;
+    std::unordered_set<_observer1_t*> set2;
+    _subject1_t subA2(Observer::abstract_set_view(set2));
+    CHECK(subA2.Attach(&obs)==true);
+    n = 0;
+    subA2.Notify(A{3});
+    CHECK(n==3);//h is active
+    using handler_t = std::function<void(A)>;
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+    subject_handlers[&subA] = h;
+    subject_handlers[&subA2] = h2;
+    obs.bindSubjectHandlers(Observer::abstract_lookup_view(subject_handlers));
+    obs.onEvent(A{2},&subA);
+    CHECK(n==5);
+    obs.onEvent(A{3},&subA2);
+    CHECK(n==11);
+    subA2.Notify(A{4});
+    CHECK(n==19);
+
+}
+
+
+TEST_CASE("Testing _Subject1 / backend rebinding") {
+
+    //_Subject1<typename E, typename _SubjectEvents>
+    struct A { int value; };
+    struct B {};
+    using events_t = Observer::SubjectEvents<A,B>; 
+    using _subject1_t = Observer::_Subject1<A,events_t>;
+    using _observer1_t = Observer::_Observer1<A,events_t>;
+
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_set_view(set));
+    _observer1_t obs; 
+    CHECK(set.size()==0);
+    CHECK(subA.Attach(&obs)==true);
+    CHECK(set.size()==1);
+    auto empty = Observer::AbstractSet<_observer1_t*>();
+    subA.bindObserverSet(empty);
+    CHECK_THROWS(subA.Attach(&obs));
+    auto old_one = Observer::abstract_set_view(set);
+    subA.bindObserverSet(empty).bindObserverSet(old_one);
+    _observer1_t obs2;
+    CHECK(subA.Attach(&obs2)==true);
+    CHECK(subA.Attach(&obs)==false);//already here
 
 }
 
