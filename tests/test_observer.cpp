@@ -258,12 +258,10 @@ struct TestNoCopy
 
 TEST_CASE("Testing _Subject1 / Attach, Detach") {
 
-    //_Subject1<typename E, typename _SubjectEvents>
+    //_Subject1<typename E>
     struct A { int value; };
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>; 
-    using _subject1_t = Observer::_Subject1<A,events_t>;
-    using _observer1_t = Observer::_Observer1<A,events_t>;
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
 
     //static object
     CHECK(TestNoCopy<_subject1_t>::AssertNoCopy());
@@ -294,12 +292,10 @@ TEST_CASE("Testing _Subject1 / Attach, Detach") {
 
 TEST_CASE("Testing _Observer1 / Notify") {
 
-    //_Observer1<typename E, typename _SubjectEvents>
+    //_Observer1<typename E>
     struct A { int value; };
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>; 
-    using _subject1_t = Observer::_Subject1<A,events_t>;
-    using _observer1_t = Observer::_Observer1<A,events_t>;
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
 
     //static object
     CHECK(TestNoCopy<_observer1_t>::AssertNoCopy());
@@ -364,12 +360,10 @@ TEST_CASE("Testing _Observer1 / Notify") {
 
 TEST_CASE("Testing _Subject1 / backend rebinding") {
 
-    //_Subject1<typename E, typename _SubjectEvents>
+    //_Subject1<typename E>
     struct A { int value; };
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>; 
-    using _subject1_t = Observer::_Subject1<A,events_t>;
-    using _observer1_t = Observer::_Observer1<A,events_t>;
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
 
     std::unordered_set<_observer1_t*> set;
     _subject1_t subA(Observer::abstract_set_view(set));
@@ -388,7 +382,7 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
 
 }
 
-
+/*
 template <typename O, typename E>
 struct onEventExists
 {
@@ -596,3 +590,4 @@ TEST_CASE("Testing _Observer / handlers") {
     CHECK(static_cast<h*>(pObjH.get())->value == 2);
     
 }
+*/

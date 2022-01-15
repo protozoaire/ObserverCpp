@@ -265,16 +265,16 @@ AbstractLookup<K,V> abstract_lookup_view(std::unordered_map<K,V> const& map)
 //
 
 
-template <typename E, typename _SubjectEvents>
+template <typename E>
 struct _Observer1;
 
-template <typename E, typename _SubjectEvents>
+template <typename E>
 struct _Subject1
 : private NoCopy
 {
     private:
 
-        using pObs_t = _Observer1<E,_SubjectEvents>*;
+        using pObs_t = _Observer1<E>*;
         using observers_t = AbstractSet<pObs_t>;
         observers_t observers;
 
@@ -300,13 +300,13 @@ struct _Subject1
 
 };  
 
-template <typename E, typename _SubjectEvents>
+template <typename E>
 struct _Observer1
 : private NoCopy
 {
     private:
 
-        using pSub_t = _Subject1<E,_SubjectEvents>*;
+        using pSub_t = _Subject1<E>*;
         using handler_t = std::function<void(E)>;
         using subject_handlers_t = AbstractLookup<pSub_t,handler_t>;
         subject_handlers_t subject_handlers = { [](pSub_t){ return [](E){}; } };
@@ -332,6 +332,46 @@ struct _Observer1
 //
 
 
+template <typename _SubjectEvents>
+struct _Subject;
+
+template <typename _SubjectEvents>
+struct _Observer;
+
+template <typename ... Events>
+struct _Observer< SubjectEvents<Events...> >
+{
+    private:
+
+        using events_t = SubjectEvents<Events...>;
+        using pSub_t = _Subject<events_t>*;
+        using _observer1s_t = std::tuple< _Observer1<Events> ... >;
+        _observer1s_t _observers1s;
+
+    public:
+
+    _Observer() = default;
+
+    /*
+    void onEvent(E data)
+    {
+        static constexpr auto i = EventIndex<E,events_t>::value;
+        handlers[i](&data);
+    }
+
+    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
+    void bindHandler(std::function<void(E)>* pFunc)
+    {
+        static constexpr auto i = EventIndex<E,events_t>::value;
+        handlers[i] = [pFunc](void* pE){ (*pFunc)(*static_cast<E*>(pE)); };
+    }
+    */
+
+};
+
+
+
+/*
 template
 <
     typename _SubjectEvents,
@@ -342,11 +382,6 @@ template
 >
 struct _Subject;
 
-template
-<
-    typename _SubjectEvents
->
-struct _Observer;
 
 template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
          template <typename,typename> class event2observers_T, 
@@ -432,10 +467,12 @@ struct _Subject
         void decr_observer_count(pObs_t pObs_, size_t n)
         {
             auto it = observer2count.find(pObs_);
-            if(it == observer2count.end()) { /* nothing to do */ }
+            if(it == observer2count.end()) {
+                // nothing to do 
+            }
             else {
                 if(it->second <= n) {
-                    /* clean up observer */
+                    // clean up observer
                     observer2count.erase(it); 
                 }
                 else it->second -= n;
@@ -454,13 +491,17 @@ struct _Subject
         void _Attach(pObs_t pObs_, event_idx_t eventIdx_)
         {
             if(event_add_observer(eventIdx_,pObs_)) incr_observer_count(pObs_,1);
-            else { /* already subscribed -> do nothing */ }
+            else { 
+                // already subscribed -> do nothing
+            }
         }
 
         void _Detach(pObs_t pObs_, event_idx_t eventIdx_)
         {
             if(event_del_observer(eventIdx_,pObs_)) decr_observer_count(pObs_,1);
-            else { /* not subscribed -> do nothing */ }
+            else {
+                // not subscribed
+            }
         }
 
     public:
@@ -501,44 +542,8 @@ struct _Subject
     }
 
 };
+*/
 
-
-template <typename ... Events>
-struct _Observer< SubjectEvents<Events...> >
-{
-
-    _Observer(_Observer const&) = delete;
-    _Observer& operator=(_Observer const&) = delete;
-
-    _Observer(_Observer&&) = delete;
-    _Observer& operator=(_Observer&&) = delete;
- 
-    private:
-
-        using events_t = SubjectEvents<Events...>;
-
-        using opaque_handler_t = std::function<void(void*)>;
-        opaque_handler_t handlers [sizeof...(Events)] = { nullptr };
-
-    public:
-
-    _Observer() = default;
-
-    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
-    void onEvent(E data)
-    {
-        static constexpr auto i = EventIndex<E,events_t>::value;
-        handlers[i](&data);
-    }
-
-    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
-    void bindHandler(std::function<void(E)>* pFunc)
-    {
-        static constexpr auto i = EventIndex<E,events_t>::value;
-        handlers[i] = [pFunc](void* pE){ (*pFunc)(*static_cast<E*>(pE)); };
-    }
-
-};
 
 
 }//close Observer
