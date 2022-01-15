@@ -202,7 +202,7 @@ struct AbstractSet
 
 
 template <typename T>
-AbstractSet<T> abstract_view(std::unordered_set<T>& set)
+AbstractSet<T> abstract_set_view(std::unordered_set<T>& set)
 {
     auto append = [&set](T t){ return set.insert(t).second; };
     auto remove = [&set](T t){ return set.erase(t)==1; };
@@ -222,19 +222,41 @@ struct AbstractMap
 {
     std::function<bool(K,V)> Define;
     std::function<bool(K)> Remove;
+    std::function<V(K)> Lookup;
     using F = std::function<void(K,V)>;
     std::function<void(F)> Signal;
 };
 
 
 template <typename K, typename V>
-AbstractMap<K,V> abstract_view(std::unordered_map<K,V>& map)
+AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
 {
-    auto define = [&map](K k, V v) { map.insert_or_assign(k,v); return true; };
-    auto remove = [&map](K k) { return map.erase(k)==1; };
+    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); return true; };
+    auto remove = [&map](K k){ return map.erase(k)==1; };
+    auto lookup = [&map](K k){ return map.at(k); };
     using F = std::function<void(K,V)>; 
     auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
-    return {define,remove,signal};
+    return {define,remove,lookup,signal};
+};
+
+
+//
+//
+//
+
+
+template <typename K, typename V>
+struct AbstractLookup
+{
+    std::function<V(K)> Lookup;
+};
+
+
+template <typename K, typename V>
+AbstractLookup<K,V> abstract_lookup_view(std::unordered_map<K,V> const& map)
+{
+    auto lookup = [&map](K k){ return map.at(k); };
+    return {lookup};
 };
 
 
@@ -258,9 +280,9 @@ struct _Subject1
 
     public:
 
-    explicit _Subject1(observers_t&& observers_)
+    explicit _Subject1(observers_t observers_)
     : NoCopy()
-    , observers(std::move(observers_))
+    , observers(observers_)
     {}
 
     bool Attach(pObs_t pObs) 
@@ -281,23 +303,22 @@ struct _Observer1
     private:
 
         using pSub_t = _Subject1<E,_SubjectEvents> const*;
-        /*
-        using pSub_t = _Subject1<E,_SubjectEvents>*;
-        using subjects_t = AbstractSet<pSub_t>;
-        subjects_t subjects;
-        */
         using handler_t = std::function<void(E)>;
-        handler_t handler = [](E){};
+        using subject_handlers_t = AbstractLookup<pSub_t,handler_t>;
+        subject_handlers_t subject_handlers = { [](pSub_t){ return [](E){}; } };
 
     public:
 
     _Observer1() = default;
-    
-    void onEvent(E e, pSub_t = nullptr)
-    { handler(e); }
 
-    _Observer1& bindHandler(handler_t handler_)
-    { handler = handler_; return *this; }
+    void onEvent(E e, pSub_t pSub = nullptr)
+    { subject_handlers.Lookup(pSub)(e); }
+
+    _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
+    { subject_handlers = subject_handlers_; return *this; }
+
+    _Observer1& bindHandler(handler_t handler)
+    { subject_handlers.Lookup = [handler](pSub_t){ return handler; }; return *this; }
 
 };
 

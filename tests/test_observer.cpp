@@ -112,6 +112,7 @@ TEST_CASE("Testing AbstractSet") {
     std::unordered_set<int> set;
     Observer::AbstractSet<int> Set;
     
+    //Append
     auto _append = [&set](int i){ return set.insert(i).second; };
     Set.Append = _append;
     CHECK(Set.Append(3)==true);
@@ -119,6 +120,7 @@ TEST_CASE("Testing AbstractSet") {
     CHECK(set.size()==1);
     CHECK(Set.Append(3)==false);//already in
 
+    //Remove
     set.insert(1);
     auto _remove = [&set](int i){ return set.erase(i)==1; };
     CHECK(set.count(1)==1);
@@ -127,6 +129,7 @@ TEST_CASE("Testing AbstractSet") {
     CHECK(set.count(1)==0);
     CHECK(Set.Remove(2)==false);//never added
 
+    //Signal
     using F = std::function<void(int)>;
     auto _signal = [&set](F f){ for(auto t : set) f(t); };
     Set.Signal = _signal;
@@ -139,8 +142,8 @@ TEST_CASE("Testing AbstractSet") {
     CHECK(n==7);
     CHECK(Set.Remove(1)==true);
 
-    //constructing with abstract_view
-    Set = Observer::abstract_view(set);
+    //constructing with abstract_set_view
+    Set = Observer::abstract_set_view(set);
     CHECK(set.size()==1);//3 is still in
     CHECK(Set.Remove(2)==false);//not there
     CHECK(Set.Remove(3)==true);
@@ -156,10 +159,11 @@ TEST_CASE("Testing AbstractSet") {
 
 TEST_CASE("Testing AbstractMap") {
 
-    //AbstractMap<typename T>
+    //AbstractMap<typename K, typename V>
     std::unordered_map<char,int> map;
     Observer::AbstractMap<char,int> Map;
     
+    //Define
     auto _define = [&map](char c, int i) { map.insert_or_assign(c,i); return true; };
     Map.Define = _define;
     CHECK(Map.Define('a',1)==true);
@@ -169,6 +173,7 @@ TEST_CASE("Testing AbstractMap") {
     CHECK(map.size()==1);
     CHECK(map['a']==2);
     
+    //Remove
     map.insert_or_assign('b',3);
     auto _remove = [&map](char i) { return map.erase(i)==1; };
     CHECK(map.count('b')==1);
@@ -177,7 +182,8 @@ TEST_CASE("Testing AbstractMap") {
     CHECK(map.count('b')==0);
     CHECK(Map.Remove('b')==false);//already removed
     CHECK(Map.Remove('c')==false);//never defined
-    
+
+    //Signal
     using F = std::function<void(char,int)>;
     auto _signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
     Map.Signal = _signal;
@@ -191,8 +197,15 @@ TEST_CASE("Testing AbstractMap") {
     Map.Signal(f);
     CHECK(n==9);
 
-    //constructing from abstract_view
-    Map = Observer::abstract_view(map);
+    //Lookup
+    auto _lookup = [&map](char c){ return map.at(c); };
+    Map.Lookup = _lookup;
+    CHECK(Map.Lookup('a')==2);
+    CHECK(Map.Lookup('b')==5);
+    CHECK_THROWS(Map.Lookup('c'));//Never defined; map.at throws;
+
+    //constructing from abstract_map_view
+    Map = Observer::abstract_map_view(map);
     CHECK(map.size()==2);
     CHECK(Map.Remove('c')==false);//not there
     CHECK(Map.Remove('b')==true);
@@ -202,6 +215,30 @@ TEST_CASE("Testing AbstractMap") {
     auto g = [&n](char, int i){ n+=2*i; };
     Map.Signal(g);
     CHECK(n==(1+2*2+2*3));
+
+}
+
+
+TEST_CASE("Testing AbstractLookup") {
+
+    //AbstractLookup<typename K, typename V>
+    std::unordered_map<char,int> map;
+    Observer::AbstractLookup<char,int> Lookup;
+    map['a'] = 0;
+    map['b'] = 1;
+
+    //Lookup
+    auto _lookup = [&map](char c){ return map.at(c); };
+    Lookup.Lookup = _lookup;
+    CHECK(Lookup.Lookup('a')==0);
+    CHECK(Lookup.Lookup('b')==1);
+    CHECK_THROWS(Lookup.Lookup('c'));//Never defined; map.at throws;
+
+    //constructing form abstract_lookup_view
+    Lookup = Observer::abstract_lookup_view(map);
+    CHECK(Lookup.Lookup('a')==0);//indeed
+    Lookup.Lookup = [&map](char c){ return map.at(c)*2; };
+    CHECK(Lookup.Lookup('b')==2);
 
 }
 
@@ -234,7 +271,7 @@ TEST_CASE("Testing _Subject1 / Attach, Detach") {
    
     //Attach
     std::unordered_set<_observer1_t*> set;
-    _subject1_t subA(Observer::abstract_view(set));
+    _subject1_t subA(Observer::abstract_set_view(set));
     _observer1_t obs; 
     CHECK(set.size()==0);
     CHECK(subA.Attach(&obs)==true);
@@ -282,9 +319,12 @@ TEST_CASE("Testing _Observer1 / Notify") {
     obs.onEvent(A{2});
     CHECK(n==6);
 
+    //observer bindSubjectHandlers;
+
+
     //through Notify
     std::unordered_set<_observer1_t*> set;
-    _subject1_t subA(Observer::abstract_view(set));
+    _subject1_t subA(Observer::abstract_set_view(set));
     CHECK(subA.Attach(&obs)==true);
     subA.Notify(A{3});
     CHECK(n==12);
