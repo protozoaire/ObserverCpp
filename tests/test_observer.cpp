@@ -219,26 +219,44 @@ TEST_CASE("Testing AbstractMap") {
 }
 
 
-TEST_CASE("Testing AbstractLookup") {
+TEST_CASE("Testing AbstractConstMap") {
 
-    //AbstractLookup<typename K, typename V>
+    //AbstractConstMap<typename K, typename V>
     std::unordered_map<char,int> map;
-    Observer::AbstractLookup<char,int> Lookup;
+    Observer::AbstractConstMap<char,int> Map;
     map['a'] = 0;
     map['b'] = 1;
 
     //Lookup
     auto _lookup = [&map](char c){ return map.at(c); };
-    Lookup.Lookup = _lookup;
-    CHECK(Lookup.Lookup('a')==0);
-    CHECK(Lookup.Lookup('b')==1);
-    CHECK_THROWS(Lookup.Lookup('c'));//Never defined; map.at throws;
+    Map.Lookup = _lookup;
+    CHECK(Map.Lookup('a')==0);
+    CHECK(Map.Lookup('b')==1);
+    CHECK_THROWS(Map.Lookup('c'));//Never defined; map.at throws;
 
     //constructing form abstract_lookup_view
-    Lookup = Observer::abstract_lookup_view(map);
-    CHECK(Lookup.Lookup('a')==0);//indeed
-    Lookup.Lookup = [&map](char c){ return map.at(c)*2; };
-    CHECK(Lookup.Lookup('b')==2);
+    Map = Observer::abstract_const_map_view(map);
+    CHECK(Map.Lookup('a')==0);//indeed
+    Map.Lookup = [&map](char c){ return map.at(c)*2; };
+    CHECK(Map.Lookup('b')==2);
+ 
+    //Signal
+    using F = std::function<void(char,int)>;
+    auto _signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    Map.Signal = _signal;
+    int n = 0;
+    auto f = [&n](char, int i){ n += i; };
+    CHECK(map.size()==2);
+    map['a'] = 1;
+    map['b'] = 5;
+    Map.Signal(f);
+    CHECK(n==6);
+
+    //constructing form abstract_lookup_view
+    map.clear(); map['a'] = 3;
+    Map = Observer::abstract_const_map_view(map);
+    CHECK(Map.Lookup('a')==3);//indeed
+    CHECK_THROWS(Map.Lookup('b'));
 
 }
 
@@ -309,7 +327,7 @@ TEST_CASE("Testing _Observer1 / Notify") {
     int n = 0;
     auto h = [&n](A a){ n+=a.value; };
     auto h2 = [&n](A a){ n+=a.value*2; };
-    obs.bindHandler(h).bindHandler(h2);//h2 should be in effect
+    obs.bindSubjectHandler1(nullptr,h).bindSubjectHandler1(nullptr,h2);//h2 should be in effect
     obs.onEvent(A{1});
     CHECK(n==2);
     obs.onEvent(A{2});
@@ -321,13 +339,13 @@ TEST_CASE("Testing _Observer1 / Notify") {
     CHECK(subA.Attach(&obs)==true);
     subA.Notify(A{3});
     CHECK(n==12);
-    obs.bindHandler(h);
+    obs.bindSubjectHandler1(nullptr,h);
     subA.Notify(A{4});
     CHECK(n==16);
 
     //Notify to multiple observers
     _observer1_t obs2;
-    obs2.bindHandler(h2);
+    obs2.bindSubjectHandler1(nullptr,h2);
     CHECK(subA.Attach(&obs2)==true);
     n = 0;
     subA.Notify(A{5});
@@ -347,13 +365,88 @@ TEST_CASE("Testing _Observer1 / Notify") {
     std::unordered_map<_subject1_t*,handler_t> subject_handlers;
     subject_handlers[&subA] = h;
     subject_handlers[&subA2] = h2;
-    obs.bindSubjectHandlers(Observer::abstract_lookup_view(subject_handlers));
+    obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
     obs.onEvent(A{2},&subA);
     CHECK(n==5);
     obs.onEvent(A{3},&subA2);
     CHECK(n==11);
     subA2.Notify(A{4});
     CHECK(n==19);
+
+}
+
+
+TEST_CASE("Testing _Observer1 / auto-Detach") {
+
+//_Observer1<typename E>
+    struct A { int value; };
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
+    using handler_t = std::function<void(A)>;
+    
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_set_view(set));
+
+    int n = 0;
+    auto h = [&n](A a){ n+=a.value; };
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+    subject_handlers[&subA] = h;
+    
+
+    //notify ObserverClose
+    //1. no handler -> no Detach
+    set.clear(); 
+    {
+        _observer1_t obs3;
+        subA.Attach(&obs3);
+    }
+    CHECK(set.size()==1);
+    //2. unique handler -> no Detach
+    set.clear();
+    n = 0;
+    {
+        _observer1_t obs3;
+        subA.Attach(&obs3);
+        obs3.bindSubjectHandler1(nullptr,h);
+        subA.Notify(A{4});
+        CHECK(n==4);
+    }
+    CHECK(set.size()==1);
+    //3. subject_handlers -> Detach
+    set.clear();
+    n = 0;
+    {
+        _observer1_t obs3;
+        subA.Attach(&obs3);
+        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        subA.Notify(A{4});
+        CHECK(n==4);
+    }
+    CHECK(set.size()==0);
+    //4. subject_handlers then unique handler -> no Detach
+    set.clear();
+    n = 0;
+    {
+        _observer1_t obs3;
+        subA.Attach(&obs3);
+        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        obs3.bindSubjectHandler1(nullptr,h);
+        subA.Notify(A{4});
+        CHECK(n==4);
+    }
+    CHECK(set.size()==1);
+    //4. subject_handlers then unique handler and unique Subject -> Detach
+    set.clear();
+    n = 0;
+    {
+        _observer1_t obs3;
+        subA.Attach(&obs3);
+        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        obs3.bindSubjectHandler1(&subA,h);
+        subA.Notify(A{4});
+        CHECK(n==4);
+    }
+    CHECK(set.size()==0);
 
 }
 
@@ -379,6 +472,18 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     _observer1_t obs2;
     CHECK(subA.Attach(&obs2)==true);
     CHECK(subA.Attach(&obs)==false);//already here
+
+}
+
+
+TEST_CASE("Testing _Subject") {
+
+    //_Subject1BaseWrapper<typename E, typename _SubjectEvents>
+    //struct A { int value; };
+    //struct B {};
+    //using events_t = Observer::SubjectEvents<A,B>;
+    
+    
 
 }
 

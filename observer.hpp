@@ -246,17 +246,21 @@ AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
 
 
 template <typename K, typename V>
-struct AbstractLookup
+struct AbstractConstMap
 {
     std::function<V(K)> Lookup;
+    using F = std::function<void(K,V)>;
+    std::function<void(F)> Signal;
 };
 
 
 template <typename K, typename V>
-AbstractLookup<K,V> abstract_lookup_view(std::unordered_map<K,V> const& map)
+AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map)
 {
     auto lookup = [&map](K k){ return map.at(k); };
-    return {lookup};
+    using F = std::function<void(K,V)>; 
+    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    return {lookup,signal};
 };
 
 
@@ -308,8 +312,13 @@ struct _Observer1
 
         using pSub_t = _Subject1<E>*;
         using handler_t = std::function<void(E)>;
-        using subject_handlers_t = AbstractLookup<pSub_t,handler_t>;
-        subject_handlers_t subject_handlers = { [](pSub_t){ return [](E){}; } };
+        using subject_handlers_t = AbstractConstMap<pSub_t,handler_t>;
+        using signal_func_t = std::function<void(pSub_t,handler_t)>;
+
+        static constexpr auto lookup_ignore = [](pSub_t){ return [](E){}; };
+        static constexpr auto signal_ignore = [](signal_func_t){};
+
+        subject_handlers_t subject_handlers = { lookup_ignore, signal_ignore }; 
 
     public:
 
@@ -321,8 +330,20 @@ struct _Observer1
     _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
     { subject_handlers = subject_handlers_; return *this; }
 
-    _Observer1& bindHandler(handler_t handler)
-    { subject_handlers.Lookup = [handler](pSub_t){ return handler; }; return *this; }
+    _Observer1& bindSubjectHandler1(pSub_t pSub, handler_t handler)
+    {
+        subject_handlers.Lookup = [handler](pSub_t){ return handler; };
+        if(pSub) {
+            auto detach_unique = [pSub,this](signal_func_t){ pSub->Detach(this); };
+            subject_handlers.Signal = detach_unique;
+        }
+        else subject_handlers.Signal = signal_ignore;
+        return *this; 
+    }
+    
+    ~_Observer1()
+    { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
+    //only works when a subject_handlers was bound;
 
 };
 
@@ -339,18 +360,16 @@ template <typename _SubjectEvents>
 struct _Observer;
 
 template <typename ... Events>
-struct _Observer< SubjectEvents<Events...> >
+struct _Subject< SubjectEvents<Events...> >
 {
     private:
 
         using events_t = SubjectEvents<Events...>;
-        using pSub_t = _Subject<events_t>*;
-        using _observer1s_t = std::tuple< _Observer1<Events> ... >;
-        _observer1s_t _observers1s;
+        
+        using _subject1s_t = std::tuple<_Subject1<Events>...>;
+        _subject1s_t _subject1s;
 
     public:
-
-    _Observer() = default;
 
     /*
     void onEvent(E data)
@@ -369,7 +388,21 @@ struct _Observer< SubjectEvents<Events...> >
 
 };
 
+template <typename ... Events>
+struct _Observer< SubjectEvents<Events...> >
+{
+    private:
 
+        using events_t = SubjectEvents<Events...>;
+        
+        using _subject1s_t = std::tuple<_Subject1<Events>...>;
+        _subject1s_t _subject1s;
+
+    public:
+
+    _Observer() = default;
+
+};
 
 /*
 template
