@@ -157,6 +157,32 @@ TEST_CASE("Testing AbstractSet") {
 }
 
 
+TEST_CASE("Testing AbstractSetTuple") {
+
+    //AbstractSetTuple<typename ... Ts>
+    std::unordered_set<int> set_int;
+    std::unordered_set<char> set_char;
+
+    //ctor
+    auto Set_int = Observer::abstract_set_view(set_int);
+    auto Set_char = Observer::abstract_set_view(set_char);
+    Observer::AbstractSetTuple<int,char> TSet(Set_int,Set_char);
+
+    //Ops
+    TSet.Set(Set_int).Set(Set_char);
+    auto Set_int2 = TSet.Get(int());
+
+    //constructing from abstract_set_tuple_view
+    TSet = Observer::abstract_set_tuple_view(set_int,set_char);
+    //
+    std::tuple<std::unordered_set<int>, std::unordered_set<char>> tset;
+    TSet = Observer::abstract_set_tuple_view(tset);
+
+    //TODO more tests
+
+}
+
+
 TEST_CASE("Testing AbstractMap") {
 
     //AbstractMap<typename K, typename V>
@@ -327,7 +353,7 @@ TEST_CASE("Testing _Observer1 / Notify") {
     int n = 0;
     auto h = [&n](A a){ n+=a.value; };
     auto h2 = [&n](A a){ n+=a.value*2; };
-    obs.bindSubjectHandler1(nullptr,h).bindSubjectHandler1(nullptr,h2);//h2 should be in effect
+    obs.bindHandlerSubject1(h).bindHandlerSubject1(h2);//h2 should be in effect
     obs.onEvent(A{1});
     CHECK(n==2);
     obs.onEvent(A{2});
@@ -339,13 +365,13 @@ TEST_CASE("Testing _Observer1 / Notify") {
     CHECK(subA.Attach(&obs)==true);
     subA.Notify(A{3});
     CHECK(n==12);
-    obs.bindSubjectHandler1(nullptr,h);
+    obs.bindHandlerSubject1(h);
     subA.Notify(A{4});
     CHECK(n==16);
 
     //Notify to multiple observers
     _observer1_t obs2;
-    obs2.bindSubjectHandler1(nullptr,h2);
+    obs2.bindHandlerSubject1(h2);
     CHECK(subA.Attach(&obs2)==true);
     n = 0;
     subA.Notify(A{5});
@@ -407,7 +433,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
     {
         _observer1_t obs3;
         subA.Attach(&obs3);
-        obs3.bindSubjectHandler1(nullptr,h);
+        obs3.bindHandlerSubject1(h);
         subA.Notify(A{4});
         CHECK(n==4);
     }
@@ -430,7 +456,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
         _observer1_t obs3;
         subA.Attach(&obs3);
         obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
-        obs3.bindSubjectHandler1(nullptr,h);
+        obs3.bindHandlerSubject1(h);
         subA.Notify(A{4});
         CHECK(n==4);
     }
@@ -442,7 +468,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
         _observer1_t obs3;
         subA.Attach(&obs3);
         obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
-        obs3.bindSubjectHandler1(&subA,h);
+        obs3.bindHandlerSubject1(h,&subA);
         subA.Notify(A{4});
         CHECK(n==4);
     }
@@ -476,15 +502,32 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
 }
 
 
+template <typename E>
+using _pObs1 = Observer::_Observer1<E>*;
+
+template <typename E>
+using _set1 = std::unordered_set<_pObs1<E>>;
+
+template <typename ... Events>
+using _tset = std::tuple<_set1<Events> ... >;
+
+
 TEST_CASE("Testing _Subject") {
 
-    //_Subject1BaseWrapper<typename E, typename _SubjectEvents>
-    //struct A { int value; };
-    //struct B {};
-    //using events_t = Observer::SubjectEvents<A,B>;
-    
-    
+    //_Subject<typename ... Events>
+    struct A { int value; };
+    struct B {};
+    struct C {};
+    using _subject_t = Observer::_Subject<A,B,C>;
 
+    _tset<A,B,C> tset;
+    _subject_t subABC(Observer::abstract_set_tuple_view(tset));
+    
+    auto SetA = Observer::abstract_set_view(std::get<_set1<A>>(tset));
+    auto SetB = Observer::abstract_set_view(std::get<_set1<B>>(tset));
+    auto SetC = Observer::abstract_set_view(std::get<_set1<C>>(tset));
+    _subject_t subABC_(SetA,SetB,SetC);
+    
 }
 
 /*

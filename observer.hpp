@@ -217,6 +217,48 @@ AbstractSet<T> abstract_set_view(std::unordered_set<T>& set)
 //
 
 
+template <typename ... Ts>
+struct AbstractSetTuple
+{
+    private:
+    using impl_t = std::tuple<AbstractSet<Ts>...>;
+    impl_t impl;
+
+    public:
+    AbstractSetTuple() = default;
+
+    AbstractSetTuple(AbstractSet<Ts> ... sets)
+    : impl(sets ...)
+    {}
+
+    template <typename T>
+    AbstractSetTuple& Set(AbstractSet<T> s)
+    { std::get<AbstractSet<T>>(impl) = s; return *this; }
+
+    template <typename T>
+    AbstractSet<T> Get(T) const
+    { return std::get<AbstractSet<T>>(impl); }
+
+};
+
+template <typename ... Ts>
+AbstractSetTuple<Ts...> abstract_set_tuple_view(std::unordered_set<Ts>& ... sets)
+{
+    return { abstract_set_view(sets) ... };
+};
+
+template <typename ... Cs>
+auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
+{
+    return abstract_set_tuple_view(std::get<Cs>(tset)...);
+}
+
+
+//
+//
+//
+
+
 template <typename K, typename V>
 struct AbstractMap
 {
@@ -330,7 +372,7 @@ struct _Observer1
     _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
     { subject_handlers = subject_handlers_; return *this; }
 
-    _Observer1& bindSubjectHandler1(pSub_t pSub, handler_t handler)
+    _Observer1& bindHandlerSubject1(handler_t handler = lookup_ignore, pSub_t pSub = nullptr)
     {
         subject_handlers.Lookup = [handler](pSub_t){ return handler; };
         if(pSub) {
@@ -353,23 +395,74 @@ struct _Observer1
 //
 
 
-template <typename _SubjectEvents>
-struct _Subject;
+template <typename ... Events>
+struct _Subject
+: _Subject1<Events> ...
+{
+    private:
+        
+        template <typename E>
+        using pObs_T = _Observer1<E>*;
+    
+        template <typename E>
+        using observers_T = AbstractSet<pObs_T<E>>;
+    
+    public:
 
-template <typename _SubjectEvents>
+    explicit _Subject(observers_T<Events> ... Sets)
+    : _Subject1<Events>(Sets) ...
+    {}
+
+    explicit _Subject(AbstractSetTuple<pObs_T<Events>...> TSet)
+    : _Subject1<Events>(TSet.Get(pObs_T<Events>())) ... 
+    {}
+
+};
+
+
+/*
+template <typename ... Events>
 struct _Observer;
 
 template <typename ... Events>
-struct _Subject< SubjectEvents<Events...> >
+struct _Subject
+: _Subject1<Events> ...
 {
     private:
 
-        using events_t = SubjectEvents<Events...>;
         
-        using _subject1s_t = std::tuple<_Subject1<Events>...>;
-        _subject1s_t _subject1s;
-
     public:
+
+    //comment construire mes _Subject1 ?
+    //(je dois fournir des AbstractSet)
+    //We need an AbstractSet nextable factory;
+
+    ~_Subject()
+    {
+        //notify close to all;
+    }
+
+};
+
+template <typename ... Events>
+struct _Observer
+: _Observer1<Events> ...
+{
+
+
+    
+    public:
+
+    _Observer() = default
+
+    //you just bind on an individual basis.
+
+    void onSubjectClose(pSub_t pSub = nullptr)
+    {
+
+
+};
+*/
 
     /*
     void onEvent(E data)
@@ -386,8 +479,7 @@ struct _Subject< SubjectEvents<Events...> >
     }
     */
 
-};
-
+/*
 template <typename ... Events>
 struct _Observer< SubjectEvents<Events...> >
 {
@@ -403,6 +495,7 @@ struct _Observer< SubjectEvents<Events...> >
     _Observer() = default;
 
 };
+*/
 
 /*
 template
