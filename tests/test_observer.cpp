@@ -157,29 +157,42 @@ TEST_CASE("Testing AbstractSet") {
 }
 
 
+struct ASVs
+{
+    template <typename T>
+    Observer::AbstractSet<T> operator()(std::unordered_set<T>&)
+    {
+        return {};
+    }
+};
+
+
 TEST_CASE("Testing AbstractSetTuple") {
 
     //AbstractSetTuple<typename ... Ts>
     std::unordered_set<int> set_int;
     std::unordered_set<char> set_char;
 
-    //ctor
+    //ctor from already Abstract sets
     auto Set_int = Observer::abstract_set_view(set_int);
     auto Set_char = Observer::abstract_set_view(set_char);
     Observer::AbstractSetTuple<int,char> TSet(Set_int,Set_char);
 
-    //Ops
-    TSet.Set(Set_int).Set(Set_char);
-    auto Set_int2 = TSet.Get(int());
-
-    //constructing from abstract_set_tuple_view
+    //ction using abstract_set_tuple_view
+    //1. supported impls
     TSet = Observer::abstract_set_tuple_view(set_int,set_char);
-    //
+    //2. tuple of supported impls
     std::tuple<std::unordered_set<int>, std::unordered_set<char>> tset;
     TSet = Observer::abstract_set_tuple_view(tset);
+    //3. custom impls
+    TSet = Observer::abstract_set_tuple_view<ASVs>(set_int,set_char);
+    //4. tuple of custom impls
+    TSet = Observer::abstract_set_tuple_view<ASVs>(tset);
 
-    //TODO more tests
-
+    //Ops
+    TSet.Set(Set_int).Set(Set_char);//chaining Set(.)
+    auto Set_int2 = TSet.Get(int());//Get
+    
 }
 
 
@@ -283,6 +296,27 @@ TEST_CASE("Testing AbstractConstMap") {
     Map = Observer::abstract_const_map_view(map);
     CHECK(Map.Lookup('a')==3);//indeed
     CHECK_THROWS(Map.Lookup('b'));
+
+}
+
+
+TEST_CASE("Testing Subject1 / Observer1") {
+
+    struct A {};
+    
+    using _subject1_t = Observer::_Subject1<A>;
+    using rsubject1_t = Observer::rSubject1<A>;
+    
+    using _observer1_t = Observer::_Observer1<A>;
+    using robserver1_t = Observer::rObserver1<A>;
+    
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t _subA(Observer::abstract_set_view(set));
+    rsubject1_t SubA(_subA);
+    
+    _observer1_t _obs;
+    robserver1_t Obs(_obs);
+
 
 }
 
@@ -520,222 +554,27 @@ TEST_CASE("Testing _Subject") {
     struct C {};
     using _subject_t = Observer::_Subject<A,B,C>;
 
-    _tset<A,B,C> tset;
-    _subject_t subABC(Observer::abstract_set_tuple_view(tset));
-    
-    auto SetA = Observer::abstract_set_view(std::get<_set1<A>>(tset));
-    auto SetB = Observer::abstract_set_view(std::get<_set1<B>>(tset));
-    auto SetC = Observer::abstract_set_view(std::get<_set1<C>>(tset));
+    //ctor from an AbstractSet list
+    _set1<A> _setA;
+    _set1<B> _setB;
+    _set1<C> _setC;
+    auto SetA = Observer::abstract_set_view(_setA);
+    auto SetB = Observer::abstract_set_view(_setB);
+    auto SetC = Observer::abstract_set_view(_setC);
     _subject_t subABC_(SetA,SetB,SetC);
     
-}
+    //ctor from an AbstractSetTuple
+    _tset<A,B,C> tset;
+    _subject_t subABC(Observer::abstract_set_tuple_view(tset));
 
-/*
-template <typename O, typename E>
-struct onEventExists
-{
-    template <typename T = E, void (O::*)(T) = &O::template onEvent<T>>
-    static std::true_type test(int);
-
-    static std::false_type test(...);
-
-    static constexpr bool value = decltype(test(0))::value;
-};
-
-TEST_CASE("Testing _Subject / Create") {
-
-    //_Subject<typename _SubjectEvents>
-
-    struct A {};
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-
-    //static object
-    CHECK(TestNoCopy<Observer::_Subject<events_t>>::AssertNoCopy());
-    CHECK(TestNoCopy<Observer::_Subject<events_t>>::AssertNoMove());
-
+    //Attach some Observer
+    struct D {};
+    using _observer_t = Observer::_Observer<A,B,D>;
+    _observer_t obs;
+    CHECK(subABC.Attach(A(),&obs)==true);
+    CHECK(subABC.Detach(B(),&obs)==false);//never attached
+    CHECK(subABC.Detach(A(),&obs)==true);
+  
 }
 
 
-TEST_CASE("Testing _Subject / Subscribe") {
-
-    struct A {};
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-    
-    using subject_t = Observer::_Subject<events_t>;
-    using observer_t = Observer::_Observer<events_t>;
-    
-    subject_t sub;
-    observer_t obs;
-    //good event index succeeds:
-    CHECK(sub.Attach(&obs,0) == true);
-    CHECK(sub.Attach(&obs,1) == true);
-    //bad event index fails
-    CHECK(sub.Attach(&obs,2) == false);
-    //know current registration of observer
-    CHECK(sub.nEvents(&obs)==2);
-    //already event does nothing;
-    CHECK(sub.Attach(&obs,0) == true);
-    CHECK(sub.nEvents(&obs) == 2);
-
-    //multiple subscription
-    observer_t obs2;
-    //any bad event -> global fail
-    CHECK(sub.Attach(&obs2,{0,2}) == false);
-    CHECK(sub.nEvents(&obs2) == 0);
-    //all good -> succeed
-    CHECK(sub.Attach(&obs2,{1}) == true);
-    CHECK(sub.nEvents(&obs2) == 1);
-    //all good / redundant -> succeed
-    CHECK(sub.Attach(&obs2,{1,1}) == true);
-    CHECK(sub.nEvents(&obs2) == 1);
-
-}
-
-
-TEST_CASE("Testing _Subject / Unsubscribe") {
-
-    struct A {};
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-    
-    using subject_t = Observer::_Subject<events_t>;
-    using observer_t = Observer::_Observer<events_t>;
-
-    subject_t sub;
-    observer_t obs;
-    CHECK(sub.Attach(&obs,0) == true);
-    CHECK(sub.nEvents(&obs) == 1);
-    //bad event fails (count not changed) 
-    CHECK(sub.Detach(&obs,2) == false);
-    CHECK(sub.nEvents(&obs) == 1);
-    //unsubscribed event succeeds (count not changed) 
-    CHECK(sub.Detach(&obs,1) == true);
-    CHECK(sub.nEvents(&obs) == 1);
-    //subscribed event succeeds (count changed)
-    CHECK(sub.Detach(&obs,0) == true);
-    CHECK(sub.nEvents(&obs) == 0);
-    //unregistered observer succeeds
-    observer_t obs2;
-    CHECK(sub.Detach(&obs2,0) == true);
-    CHECK(sub.nEvents(&obs2) == 0);
-
-    //multiple unsubscribe
-    observer_t obs3;
-    CHECK(sub.Attach(&obs3,{0,1}) == true);
-    //any bad event -> global fail (count not changed)
-    CHECK(sub.Detach(&obs3,{1,2}) == false);
-    CHECK(sub.nEvents(&obs3) == 2);
-    //all good -> succeed
-    CHECK(sub.Detach(&obs3,{0}) == true);
-    CHECK(sub.nEvents(&obs3) == 1);
-    //all good / redundant -> succeed
-    CHECK(sub.Detach(&obs3,{1,1}) == true);
-    CHECK(sub.nEvents(&obs3) == 0);
-
-}
-
-
-TEST_CASE("Testing _Observer / Create") {
-
-    //_Observer<typename _SubjectEvents>
-
-    struct A {};
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-
-    //static object
-    CHECK(TestNoCopy<Observer::_Observer<events_t>>::AssertNoCopy());
-    CHECK(TestNoCopy<Observer::_Observer<events_t>>::AssertNoMove());
-
-}
-
-
-
-
-TEST_CASE("Testing _Observer / onEvent methods") {
-
-    struct A {};
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-    struct C {};
-    using O = Observer::_Observer<events_t>;
-
-    //methods exist
-    CHECK(onEventExists<O,A>::value == true);
-    CHECK(onEventExists<O,B>::value == true);
-    CHECK(onEventExists<O,C>::value == false);
-
-}
-
-
-template <typename E, typename _SubjectEvents>
-struct bindHandlerExists
-{
-    using O = Observer::_Observer<_SubjectEvents>;
-    
-    template <typename T = E, void (O::*)(std::function<void(T)>*) = &O::template bindHandler<T>>
-    static std::true_type test(int);
-
-    static std::false_type test(...);
-
-    static constexpr bool value = decltype(test(0))::value;
-};
-
-
-TEST_CASE("Testing _Observer / handlers") {
-
-    struct A { size_t value; };
-    struct B {};
-    using events_t = Observer::SubjectEvents<A,B>;
-    struct C {};
-
-    //binding methods exist
-    CHECK(bindHandlerExists<A,events_t>::value == true);
-    CHECK(bindHandlerExists<B,events_t>::value == true);
-    CHECK(bindHandlerExists<C,events_t>::value == false);
-
-    using observer_t = Observer::_Observer<events_t>;
-    
-    //handler for event A
-    size_t accA = 0;
-    std::function<void(A)> handlerA = [&accA](A a){ accA += a.value; };
-    observer_t obs;
-    obs.bindHandler(&handlerA);
-    CHECK(accA == 0);
-    obs.onEvent(A{2});
-    CHECK(accA == 2);
-    obs.onEvent(A{3});
-    CHECK(accA == 5);
-
-    //redefine handlerA
-    handlerA = [&accA](A a){ accA -= a.value; };
-    obs.onEvent(A{2});
-    CHECK(accA == 3);
-
-    //add handler for B
-    size_t nB = 0;
-    std::function<void(B)> handlerB = [&nB](B){ ++nB; };
-    obs.bindHandler(&handlerB);
-    CHECK(nB == 0);
-    obs.onEvent(B());
-    CHECK(nB == 1);
-
-    //handler for A still works
-    obs.onEvent(A{2});
-    CHECK(accA == 1);
-
-    //handler and virtual calls
-    struct H { virtual void event(A) {} };
-    struct h : H {
-        size_t value = 0;
-        virtual void event(A a) override { value += a.value; }
-    };
-    auto pObjH = std::unique_ptr<H>(new h());
-    handlerA = [&pObjH](A a){ pObjH->event(a); };
-    obs.onEvent(A{2});
-    CHECK(static_cast<h*>(pObjH.get())->value == 2);
-    
-}
-*/

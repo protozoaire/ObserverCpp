@@ -253,6 +253,18 @@ auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
     return abstract_set_tuple_view(std::get<Cs>(tset)...);
 }
 
+template <typename ASVs, typename ... Cs>
+AbstractSetTuple<typename Cs::value_type ...> abstract_set_tuple_view(Cs& ... sets)
+{
+    return { ASVs()(sets) ... };
+};
+
+template <typename ASVs, typename ... Cs>
+auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
+{
+    return abstract_set_tuple_view<ASVs>(std::get<Cs>(tset)...);
+}
+
 
 //
 //
@@ -310,9 +322,44 @@ AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map
 //
 //
 
-
 template <typename E>
 struct _Observer1;
+
+template <typename E>
+struct rSubject1;
+
+template <typename E>
+struct rObserver1
+{
+    private:
+        _Observer1<E>& ref;
+    
+    public:
+    rObserver1(_Observer1<E>& ref_)
+    : ref(ref_)
+    {}
+    
+    void onEvent(E e, rSubject1<E>* prSub = nullptr);
+};
+
+template <typename E>
+struct _Subject1;
+
+template <typename E>
+struct rSubject1
+{
+    private:
+        _Subject1<E>& ref;
+
+    public:
+    rSubject1(_Subject1<E>& ref_)
+    : ref(ref_)
+    {}
+
+    bool Attach(rObserver1<E> rObs);
+    bool Detach(rObserver1<E> rObs);
+
+};
 
 template <typename E>
 struct _Subject1
@@ -320,6 +367,9 @@ struct _Subject1
 {
     private:
 
+        static_assert(SubjectEvents<E>::AssertAllDefined(),
+            "ERROR Observer::_Subject1<.>: events must be defined (not just declared)");
+        
         using pObs_t = _Observer1<E>*;
         using observers_t = AbstractSet<pObs_t>;
         observers_t observers;
@@ -351,6 +401,9 @@ struct _Observer1
 : private NoCopy
 {
     private:
+
+        static_assert(SubjectEvents<E>::AssertAllDefined(),
+            "ERROR Observer::_Observer1<.>: events must be defined (not just declared)");
 
         using pSub_t = _Subject1<E>*;
         using handler_t = std::function<void(E)>;
@@ -396,10 +449,17 @@ struct _Observer1
 
 
 template <typename ... Events>
+struct _Observer;
+
+template <typename ... Events>
 struct _Subject
 : _Subject1<Events> ...
 {
     private:
+
+        using events_check_t = SubjectEvents<Events...>;
+        static_assert(events_check_t::AssertNoDuplicate(),
+            "ERROR Observer::_Subject<...>: any event can appear only once");
         
         template <typename E>
         using pObs_T = _Observer1<E>*;
@@ -417,29 +477,24 @@ struct _Subject
     : _Subject1<Events>(TSet.Get(pObs_T<Events>())) ... 
     {}
 
-};
+    template <typename E, typename ... Evs>
+    bool Attach(E, _Observer<Evs...>* pObs) 
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::Attach<E>: event E does not belong to subject events");
+        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
+            "ERROR Observer::_Subject<...>::Attach<E>(pObs): event E does not belong to pObs events");
+        return static_cast<_Subject1<E>*>(this)->Attach(pObs);
+    }
 
-
-/*
-template <typename ... Events>
-struct _Observer;
-
-template <typename ... Events>
-struct _Subject
-: _Subject1<Events> ...
-{
-    private:
-
-        
-    public:
-
-    //comment construire mes _Subject1 ?
-    //(je dois fournir des AbstractSet)
-    //We need an AbstractSet nextable factory;
-
-    ~_Subject()
-    {
-        //notify close to all;
+    template <typename E, typename ... Evs>
+    bool Detach(E, _Observer<Evs...>* pObs) 
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::Detach<E>: event E does not belong to subject events");
+        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
+            "ERROR Observer::_Subject<...>::Detach<E>(pObs): event E does not belong to pObs events");
+        return static_cast<_Subject1<E>*>(this)->Detach(pObs);
     }
 
 };
@@ -448,228 +503,13 @@ template <typename ... Events>
 struct _Observer
 : _Observer1<Events> ...
 {
-
-
-    
-    public:
-
-    _Observer() = default
-
-    //you just bind on an individual basis.
-
-    void onSubjectClose(pSub_t pSub = nullptr)
-    {
-
-
-};
-*/
-
-    /*
-    void onEvent(E data)
-    {
-        static constexpr auto i = EventIndex<E,events_t>::value;
-        handlers[i](&data);
-    }
-
-    template <typename E, typename = typename std::enable_if< IsSupportedEvent<E,events_t>::value >::type>
-    void bindHandler(std::function<void(E)>* pFunc)
-    {
-        static constexpr auto i = EventIndex<E,events_t>::value;
-        handlers[i] = [pFunc](void* pE){ (*pFunc)(*static_cast<E*>(pE)); };
-    }
-    */
-
-/*
-template <typename ... Events>
-struct _Observer< SubjectEvents<Events...> >
-{
     private:
 
-        using events_t = SubjectEvents<Events...>;
-        
-        using _subject1s_t = std::tuple<_Subject1<Events>...>;
-        _subject1s_t _subject1s;
+        using events_check_t = SubjectEvents<Events...>;
+        static_assert(events_check_t::AssertNoDuplicate(),
+            "ERROR Observer::_Observer<...>: any event can appear only once");
 
-    public:
-
-    _Observer() = default;
-
-};
-*/
-
-/*
-template
-<
-    typename _SubjectEvents,
-    typename event_idx_t = size_t,
-    template <typename> class observers_T = std::unordered_set,
-    template <typename,typename> class event2observers_T = std::unordered_map,
-    template <typename,typename> class observer2count_T = std::unordered_map
->
-struct _Subject;
-
-
-template <typename ... Events, typename event_idx_t, template <typename> class observers_T,
-         template <typename,typename> class event2observers_T, 
-         template <typename,typename> class observer2count_T>
-struct _Subject
-< 
-    SubjectEvents<Events...>,
-    event_idx_t,
-    observers_T,
-    event2observers_T,
-    observer2count_T
->
-{
-    
-    _Subject(_Subject const&) = delete;
-    _Subject& operator=(_Subject const&) = delete;
-
-    _Subject(_Subject&&) = delete;
-    _Subject& operator=(_Subject&&) = delete;
-   
-    private:
-
-        using events_t = SubjectEvents<Events...>;
-
-        using pObs_t = _Observer<events_t>*;
-      
-        using observers_t = observers_T<pObs_t>;
-        using event2observers_t = event2observers_T<event_idx_t,observers_t>;
-        event2observers_t event2observers;
-
-        bool event_add_observer(event_idx_t eventIdx_, pObs_t pObs_)
-        {
-            auto const it = event2observers.find(eventIdx_);
-            if(it == event2observers.cend()) {
-                event2observers.insert(std::make_pair(eventIdx_,observers_t{ pObs_ }));
-                return true;
-            }
-            else {
-                auto const jt = it->second.find(pObs_);
-                if(jt == it->second.cend()) {
-                    it->second.insert(pObs_);
-                    return true;
-                }
-                else {
-                    //already subscribed
-                    return false;
-                }
-            }
-        }
-
-        bool event_del_observer(event_idx_t eventIdx_, pObs_t pObs_)
-        {
-            auto const it = event2observers.find(eventIdx_);
-            if(it == event2observers.cend()) {
-                //not subscribed by anybody
-                return false;
-            }
-            else {
-                auto const jt = it->second.find(pObs_);
-                if(jt == it->second.cend()) {
-                    //not subscribed
-                    return false;
-                }
-                else {
-                    it->second.erase(jt);
-                    return true;
-                }
-            }
-        }
-
-        using observer2count_t = observer2count_T<pObs_t,size_t>;
-        observer2count_t observer2count;
-        
-        void incr_observer_count(pObs_t pObs_, size_t n)
-        {
-            auto it = observer2count.find(pObs_);
-            if(it == observer2count.end()) { 
-                observer2count.insert(std::make_pair(pObs_,n));
-            }
-            else it->second += n;
-        }
- 
-        void decr_observer_count(pObs_t pObs_, size_t n)
-        {
-            auto it = observer2count.find(pObs_);
-            if(it == observer2count.end()) {
-                // nothing to do 
-            }
-            else {
-                if(it->second <= n) {
-                    // clean up observer
-                    observer2count.erase(it); 
-                }
-                else it->second -= n;
-            }
-        }
-       
-        size_t read_observer_count(pObs_t pObs_) const
-        {
-            auto const it = observer2count.find(pObs_);
-            if(it==observer2count.cend()) return 0;
-            else return it->second;
-        }
-
-        //
-
-        void _Attach(pObs_t pObs_, event_idx_t eventIdx_)
-        {
-            if(event_add_observer(eventIdx_,pObs_)) incr_observer_count(pObs_,1);
-            else { 
-                // already subscribed -> do nothing
-            }
-        }
-
-        void _Detach(pObs_t pObs_, event_idx_t eventIdx_)
-        {
-            if(event_del_observer(eventIdx_,pObs_)) decr_observer_count(pObs_,1);
-            else {
-                // not subscribed
-            }
-        }
-
-    public:
-
-    _Subject() = default;
-
-    bool Attach(pObs_t pObs_, event_idx_t eventIdx_)
-    {
-        if(eventIdx_ >= sizeof...(Events)) return false;
-        _Attach(pObs_,eventIdx_); 
-        return true;
-    }
-
-    bool Detach(pObs_t pObs_, event_idx_t eventIdx_)
-    {
-        if(eventIdx_ >= sizeof...(Events)) return false;
-        _Detach(pObs_,eventIdx_);
-        return true;
-    }
-
-    bool Attach(pObs_t pObs_, std::initializer_list<event_idx_t> eventIdxList_)
-    {
-        for(auto const eventIdx_ : eventIdxList_) { if(eventIdx_ >= sizeof...(Events)) return false; }
-        for(auto const eventIdx_ : eventIdxList_) { _Attach(pObs_,eventIdx_); }
-        return true;
-    }
-
-    bool Detach(pObs_t pObs_, std::initializer_list<event_idx_t> eventIdxList_)
-    {
-        for(auto const eventIdx_ : eventIdxList_) { if(eventIdx_ >= sizeof...(Events)) return false; }
-        for(auto const eventIdx_ : eventIdxList_) { _Detach(pObs_,eventIdx_); }
-        return true;
-    }
-
-    size_t nEvents(pObs_t pObs_) const
-    {
-        return read_observer_count(pObs_);
-    }
-
-};
-*/
-
+}; 
 
 
 }//close Observer
