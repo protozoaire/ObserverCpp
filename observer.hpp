@@ -274,7 +274,7 @@ auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
 template <typename K, typename V>
 struct AbstractMap
 {
-    std::function<bool(K,V)> Define;
+    std::function<void(K,V)> Define;
     std::function<bool(K)> Remove;
     std::function<V(K)> Lookup;
     using F = std::function<void(K,V)>;
@@ -285,7 +285,7 @@ struct AbstractMap
 template <typename K, typename V>
 AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
 {
-    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); return true; };
+    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); };
     auto remove = [&map](K k){ return map.erase(k)==1; };
     auto lookup = [&map](K k){ return map.at(k); };
     using F = std::function<void(K,V)>; 
@@ -326,40 +326,81 @@ template <typename E>
 struct _Observer1;
 
 template <typename E>
-struct rSubject1;
-
-template <typename E>
-struct rObserver1
-{
-    private:
-        _Observer1<E>& ref;
-    
-    public:
-    rObserver1(_Observer1<E>& ref_)
-    : ref(ref_)
-    {}
-    
-    void onEvent(E e, rSubject1<E>* prSub = nullptr);
-};
-
-template <typename E>
 struct _Subject1;
 
-template <typename E>
-struct rSubject1
-{
-    private:
-        _Subject1<E>& ref;
+template <bool as_base>
+struct AsBase;
 
-    public:
-    rSubject1(_Subject1<E>& ref_)
-    : ref(ref_)
+template <>
+struct AsBase<true>
+{
+    protected:
+    ~AsBase() = default;
+};
+
+template <typename T, typename friend_t = T>
+struct Id
+{
+    explicit Id(T* const secret_ptr_, void* const pOwner_ = nullptr)
+    : pOwner(pOwner_ ? pOwner_ : secret_ptr_),secret_ptr(secret_ptr_)
     {}
 
-    bool Attach(rObserver1<E> rObs);
-    bool Detach(rObserver1<E> rObs);
+    void* value() const
+    { return pOwner; }
+
+    private:
+        
+        void* const pOwner;
+ 
+        friend friend_t;  
+        T* const secret_ptr;
+        T* operator->() const { return secret_ptr; }
+        T* get() const { return secret_ptr; }
 
 };
+
+template <typename T, typename friend_t>
+bool operator==(Id<T,friend_t> lhs, Id<T,friend_t> rhs)
+{ return lhs.value() == rhs.value(); }
+
+template <typename T, typename friend_t>
+bool operator!=(Id<T,friend_t> lhs, Id<T,friend_t> rhs)
+{ return !(lhs==rhs); }
+
+template <typename E>
+struct SubjectId
+: private Id<_Subject1<E>,_Observer1<E>>
+{
+    private:
+    using Id_t = Id<_Subject1<E>,_Observer1<E>>;
+    
+    public:
+    using Id_t::Id;
+
+    void* value() const
+    { return Id_t::value(); }
+
+};
+
+
+
+template <typename E>
+using pSub_T = _Subject1<E>*;
+
+template <typename E>
+using _pSub_T = _Subject1<E>*;
+
+template <typename E>
+using pObs_T = _Observer1<E>*;
+
+template <typename E>
+using _pObs_T = _Observer1<E>*;
+
+
+//
+//
+//
+
 
 template <typename E>
 struct _Subject1
@@ -369,11 +410,11 @@ struct _Subject1
 
         static_assert(SubjectEvents<E>::AssertAllDefined(),
             "ERROR Observer::_Subject1<.>: events must be defined (not just declared)");
-        
-        using pObs_t = _Observer1<E>*;
+       
+        using pObs_t = pObs_T<E>;
         using observers_t = AbstractSet<pObs_t>;
         observers_t observers;
-
+        
     public:
 
     explicit _Subject1(observers_t observers_)
@@ -405,16 +446,21 @@ struct _Observer1
         static_assert(SubjectEvents<E>::AssertAllDefined(),
             "ERROR Observer::_Observer1<.>: events must be defined (not just declared)");
 
-        using pSub_t = _Subject1<E>*;
+        using pSub_t = pSub_T<E>;
         using handler_t = std::function<void(E)>;
-        using subject_handlers_t = AbstractConstMap<pSub_t,handler_t>;
+        using subject_handlers_t = AbstractMap<pSub_t,handler_t>;
         using signal_func_t = std::function<void(pSub_t,handler_t)>;
 
+        static constexpr auto define_ignore = [](pSub_t,handler_t){};
+        static constexpr auto remove_ignore = [](pSub_t){ return true; };
         static constexpr auto lookup_ignore = [](pSub_t){ return [](E){}; };
         static constexpr auto signal_ignore = [](signal_func_t){};
 
-        subject_handlers_t subject_handlers = { lookup_ignore, signal_ignore }; 
+        static constexpr subject_handlers_t allset_ignore()
+        { return { define_ignore, remove_ignore, lookup_ignore, signal_ignore }; }
 
+        subject_handlers_t subject_handlers = allset_ignore(); 
+        
     public:
 
     _Observer1() = default;
@@ -425,20 +471,29 @@ struct _Observer1
     _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
     { subject_handlers = subject_handlers_; return *this; }
 
-    _Observer1& bindHandlerSubject1(handler_t handler = lookup_ignore, pSub_t pSub = nullptr)
+    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, pSub_t pSub = nullptr)
     {
+        subject_handlers = allset_ignore();
         subject_handlers.Lookup = [handler](pSub_t){ return handler; };
         if(pSub) {
             auto detach_unique = [pSub,this](signal_func_t){ pSub->Detach(this); };
             subject_handlers.Signal = detach_unique;
         }
-        else subject_handlers.Signal = signal_ignore;
         return *this; 
     }
     
     ~_Observer1()
     { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
     //only works when a subject_handlers was bound;
+
+    bool Subscribe(pSub_t pSub)
+    { return pSub->Attach(this); }
+
+    void Define(pSub_t pSub, handler_t handler = [](E){})
+    { subject_handlers.Define(pSub,handler); }
+
+    bool Unsubscribe(pSub_t pSub)
+    { return pSub->Detach(this) && subject_handlers.Remove(pSub); }
 
 };
 
@@ -451,6 +506,7 @@ struct _Observer1
 template <typename ... Events>
 struct _Observer;
 
+
 template <typename ... Events>
 struct _Subject
 : _Subject1<Events> ...
@@ -461,9 +517,6 @@ struct _Subject
         static_assert(events_check_t::AssertNoDuplicate(),
             "ERROR Observer::_Subject<...>: any event can appear only once");
         
-        template <typename E>
-        using pObs_T = _Observer1<E>*;
-    
         template <typename E>
         using observers_T = AbstractSet<pObs_T<E>>;
     
@@ -513,6 +566,15 @@ struct _Observer
 
 
 }//close Observer
+
+
+template <typename _1, typename _2>
+struct std::hash< Observer::Id<_1,_2> >
+{
+    size_t operator()(Observer::Id<_1,_2> const& id) const
+    { return id.value(); }
+
+};
 
 
 ///////////////////////////////

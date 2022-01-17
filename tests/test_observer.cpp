@@ -203,12 +203,12 @@ TEST_CASE("Testing AbstractMap") {
     Observer::AbstractMap<char,int> Map;
     
     //Define
-    auto _define = [&map](char c, int i) { map.insert_or_assign(c,i); return true; };
+    auto _define = [&map](char c, int i) { map.insert_or_assign(c,i); };
     Map.Define = _define;
-    CHECK(Map.Define('a',1)==true);
+    Map.Define('a',1);
     CHECK(map.count('a')>0);
     CHECK(map.size()==1);
-    CHECK(Map.Define('a',2)==true);
+    Map.Define('a',2);
     CHECK(map.size()==1);
     CHECK(map['a']==2);
     
@@ -232,7 +232,7 @@ TEST_CASE("Testing AbstractMap") {
     CHECK(map.size()==1);
     CHECK(map.count('a')>0);
     CHECK(n==2);
-    CHECK(Map.Define('b',5));
+    Map.Define('b',5);
     Map.Signal(f);
     CHECK(n==9);
 
@@ -249,7 +249,7 @@ TEST_CASE("Testing AbstractMap") {
     CHECK(Map.Remove('c')==false);//not there
     CHECK(Map.Remove('b')==true);
     CHECK(map.count('a')>0);//still here, with value 2
-    CHECK(Map.Define('c',3)==true);//new entry
+    Map.Define('c',3);//new entry
     n = 1;
     auto g = [&n](char, int i){ n+=2*i; };
     Map.Signal(g);
@@ -300,22 +300,90 @@ TEST_CASE("Testing AbstractConstMap") {
 }
 
 
-TEST_CASE("Testing Subject1 / Observer1") {
+TEST_CASE("Testing Id") {
 
-    struct A {};
-    
+    //trivial owner
+    {
+        int a;
+        Observer::Id<int> id(&a);
+        CHECK(id.value()==&a);
+    }
+
+    //non-trivial owner
+    {
+        struct A { float f; int val; };
+        A a;
+        Observer::Id<int> id(&a.val,&a);
+        CHECK(id.value()!=&a.val);
+    }
+
+    //self-friend access
+    {
+        struct A { void* get(Observer::Id<A> ptr){ return ptr.operator->(); } };
+        struct B { int i; A a; };
+        B b;
+        Observer::Id<A> id(&b.a,&b);
+        CHECK(A().get(id)==&b.a); 
+    }
+
+    //foreign-friend access
+    {
+        struct A { void* addr() { return this; } };
+        struct B { int i; A a; };
+        struct C { 
+            void* get1(Observer::Id<A,C> ptr){ return ptr.operator->(); } 
+            void* get2(Observer::Id<A,C> ptr){ return ptr->addr(); }
+        };
+        B b;
+        Observer::Id<A,C> id(&b.a,&b);
+        CHECK(C().get1(id)==&b.a);
+        CHECK(C().get2(id)==&b.a);
+        CHECK(static_cast<B*>(id.value())==&b);
+    }
+
+    //storage in std::unordered_set
+    {
+        struct A {};
+        using id_t = Observer::Id<A>;
+        std::unordered_set<id_t> set;//hashable
+        A a;
+        id_t(&a)==id_t(&a);//equality works
+        A aa;
+        id_t(&a)!=id_t(&aa);
+    }
+
+}
+
+
+TEST_CASE("Testing SubjectId") {
+
+    struct A { int value; };
     using _subject1_t = Observer::_Subject1<A>;
-    using rsubject1_t = Observer::rSubject1<A>;
-    
     using _observer1_t = Observer::_Observer1<A>;
-    using robserver1_t = Observer::rObserver1<A>;
+
+    struct H
+    {
+        std::unordered_set<_observer1_t*> set;
+        _subject1_t subA = _subject1_t(Observer::abstract_set_view(set));
+    };
+    H h;
+    Observer::SubjectId<A> sub_id(&h.subA,&h);
+    CHECK(sub_id.value()==&h);
+   
+       /* 
+    _observer1_t obs;
+    using handler_t = std::function<void(A)>;
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+    int n = 0;
+    auto f = [&n](A a){ n+=a.value; };
+    subject_handlers[sub_id.value()] = f;
+    obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+    */
+
+        //obs.bindHandlerSubject1(h);
     
-    std::unordered_set<_observer1_t*> set;
-    _subject1_t _subA(Observer::abstract_set_view(set));
-    rsubject1_t SubA(_subA);
-    
-    _observer1_t _obs;
-    robserver1_t Obs(_obs);
+
+
 
 
 }
@@ -425,7 +493,7 @@ TEST_CASE("Testing _Observer1 / Notify") {
     std::unordered_map<_subject1_t*,handler_t> subject_handlers;
     subject_handlers[&subA] = h;
     subject_handlers[&subA2] = h2;
-    obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+    obs.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
     obs.onEvent(A{2},&subA);
     CHECK(n==5);
     obs.onEvent(A{3},&subA2);
@@ -478,7 +546,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
     {
         _observer1_t obs3;
         subA.Attach(&obs3);
-        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        obs3.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
         subA.Notify(A{4});
         CHECK(n==4);
     }
@@ -489,7 +557,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
     {
         _observer1_t obs3;
         subA.Attach(&obs3);
-        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        obs3.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
         obs3.bindHandlerSubject1(h);
         subA.Notify(A{4});
         CHECK(n==4);
@@ -501,7 +569,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
     {
         _observer1_t obs3;
         subA.Attach(&obs3);
-        obs3.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        obs3.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
         obs3.bindHandlerSubject1(h,&subA);
         subA.Notify(A{4});
         CHECK(n==4);
@@ -532,6 +600,70 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     _observer1_t obs2;
     CHECK(subA.Attach(&obs2)==true);
     CHECK(subA.Attach(&obs)==false);//already here
+
+}
+
+
+TEST_CASE("Testing _Observer1 / subscribe, define, unsubscribe") {
+
+    struct A { int value; };
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
+    using handler_t = std::function<void(A)>;
+
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_set_view(set));
+    
+    int n = 0;
+    auto h = [&n](A a){ n+=a.value; };
+    auto h2 = [&n](A a){ n+=a.value*2; };
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+
+    //1. no backend, no known pSub
+    {
+        _observer1_t obs;
+        CHECK(obs.Subscribe(&subA)==true);
+        CHECK(set.size()==1);
+        obs.bindHandlerSubject1(h);
+        obs.onEvent(A{1},&subA);
+        CHECK(n==1);
+        CHECK(obs.Unsubscribe(&subA)==true);
+    }
+    //2. no backend, pSub
+    n = 0;
+    set.clear();
+    {
+        _observer1_t obs;
+        CHECK(obs.Subscribe(&subA)==true);
+        CHECK(set.size()==1);
+        obs.bindHandlerSubject1(h,&subA);
+        obs.onEvent(A{1},&subA);
+        CHECK(n==1);
+        obs.Define(&subA,h2);
+        n = 0;
+        obs.onEvent(A{1},&subA);
+        CHECK(n==2);
+        CHECK(obs.Unsubscribe(&subA)==true);
+    }
+    //3. with backend
+    n = 0;
+    set.clear();
+    {
+        _observer1_t obs;
+        obs.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
+        CHECK(set.count(&obs)==0);
+        CHECK(obs.Subscribe(&subA)==true);
+        obs.Define(&subA,h);
+        CHECK(subject_handlers.size()==1);
+        obs.onEvent(A{1},&subA);
+        CHECK(n==1);
+        CHECK(obs.Subscribe(&subA)==false);
+        CHECK(obs.Unsubscribe(&subA)==true);
+        CHECK(subject_handlers.size()==0);
+        CHECK(set.size()==0);
+        subA.Notify(A{1}); 
+        CHECK(n==1);
+    }
 
 }
 
@@ -576,5 +708,3 @@ TEST_CASE("Testing _Subject") {
     CHECK(subABC.Detach(A(),&obs)==true);
   
 }
-
-
