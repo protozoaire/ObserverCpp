@@ -328,73 +328,27 @@ struct _Observer1;
 template <typename E>
 struct _Subject1;
 
-template <bool as_base>
-struct AsBase;
-
-template <>
-struct AsBase<true>
-{
-    protected:
-    ~AsBase() = default;
-};
-
-template <typename T, typename friend_t = T>
-struct Id
-{
-    explicit Id(T* const secret_ptr_, void* const pOwner_ = nullptr)
-    : pOwner(pOwner_ ? pOwner_ : secret_ptr_),secret_ptr(secret_ptr_)
-    {}
-
-    void* value() const
-    { return pOwner; }
-
-    private:
-        
-        void* const pOwner;
- 
-        friend friend_t;  
-        T* const secret_ptr;
-        T* operator->() const { return secret_ptr; }
-        T* get() const { return secret_ptr; }
-
-};
-
-template <typename T, typename friend_t>
-bool operator==(Id<T,friend_t> lhs, Id<T,friend_t> rhs)
-{ return lhs.value() == rhs.value(); }
-
-template <typename T, typename friend_t>
-bool operator!=(Id<T,friend_t> lhs, Id<T,friend_t> rhs)
-{ return !(lhs==rhs); }
-
 template <typename E>
 struct SubjectId
-: private Id<_Subject1<E>,_Observer1<E>>
 {
-    private:
-    using Id_t = Id<_Subject1<E>,_Observer1<E>>;
+    SubjectId(_Subject1<E>* ptr_) : ptr(ptr_) {}
     
-    public:
-    using Id_t::Id;
+    private:
 
-    void* value() const
-    { return Id_t::value(); }
+        _Subject1<E>* ptr;
+
+        auto operator->() const { return ptr; }
+        auto get() const { return ptr; }
+        friend _Observer1<E>;
 
 };
-
 
 
 template <typename E>
 using pSub_T = _Subject1<E>*;
 
 template <typename E>
-using _pSub_T = _Subject1<E>*;
-
-template <typename E>
 using pObs_T = _Observer1<E>*;
-
-template <typename E>
-using _pObs_T = _Observer1<E>*;
 
 
 //
@@ -460,7 +414,9 @@ struct _Observer1
         { return { define_ignore, remove_ignore, lookup_ignore, signal_ignore }; }
 
         subject_handlers_t subject_handlers = allset_ignore(); 
-        
+       
+        using sId_t = SubjectId<E>; 
+
     public:
 
     _Observer1() = default;
@@ -471,8 +427,9 @@ struct _Observer1
     _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
     { subject_handlers = subject_handlers_; return *this; }
 
-    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, pSub_t pSub = nullptr)
+    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = sId_t(nullptr))
     {
+        pSub_t pSub = sId.get();
         subject_handlers = allset_ignore();
         subject_handlers.Lookup = [handler](pSub_t){ return handler; };
         if(pSub) {
@@ -486,14 +443,14 @@ struct _Observer1
     { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
     //only works when a subject_handlers was bound;
 
-    bool Subscribe(pSub_t pSub)
-    { return pSub->Attach(this); }
+    bool Subscribe(sId_t sId)
+    { return sId->Attach(this); }
 
-    void Define(pSub_t pSub, handler_t handler = [](E){})
-    { subject_handlers.Define(pSub,handler); }
+    void Define(sId_t sId, handler_t handler = [](E){})
+    { subject_handlers.Define(sId.get(),handler); }
 
-    bool Unsubscribe(pSub_t pSub)
-    { return pSub->Detach(this) && subject_handlers.Remove(pSub); }
+    bool Unsubscribe(sId_t sId)
+    { return sId->Detach(this) && subject_handlers.Remove(sId.get()); }
 
 };
 
@@ -566,15 +523,6 @@ struct _Observer
 
 
 }//close Observer
-
-
-template <typename _1, typename _2>
-struct std::hash< Observer::Id<_1,_2> >
-{
-    size_t operator()(Observer::Id<_1,_2> const& id) const
-    { return id.value(); }
-
-};
 
 
 ///////////////////////////////

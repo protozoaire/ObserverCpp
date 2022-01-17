@@ -300,91 +300,35 @@ TEST_CASE("Testing AbstractConstMap") {
 }
 
 
-TEST_CASE("Testing Id") {
-
-    //trivial owner
-    {
-        int a;
-        Observer::Id<int> id(&a);
-        CHECK(id.value()==&a);
-    }
-
-    //non-trivial owner
-    {
-        struct A { float f; int val; };
-        A a;
-        Observer::Id<int> id(&a.val,&a);
-        CHECK(id.value()!=&a.val);
-    }
-
-    //self-friend access
-    {
-        struct A { void* get(Observer::Id<A> ptr){ return ptr.operator->(); } };
-        struct B { int i; A a; };
-        B b;
-        Observer::Id<A> id(&b.a,&b);
-        CHECK(A().get(id)==&b.a); 
-    }
-
-    //foreign-friend access
-    {
-        struct A { void* addr() { return this; } };
-        struct B { int i; A a; };
-        struct C { 
-            void* get1(Observer::Id<A,C> ptr){ return ptr.operator->(); } 
-            void* get2(Observer::Id<A,C> ptr){ return ptr->addr(); }
-        };
-        B b;
-        Observer::Id<A,C> id(&b.a,&b);
-        CHECK(C().get1(id)==&b.a);
-        CHECK(C().get2(id)==&b.a);
-        CHECK(static_cast<B*>(id.value())==&b);
-    }
-
-    //storage in std::unordered_set
-    {
-        struct A {};
-        using id_t = Observer::Id<A>;
-        std::unordered_set<id_t> set;//hashable
-        A a;
-        id_t(&a)==id_t(&a);//equality works
-        A aa;
-        id_t(&a)!=id_t(&aa);
-    }
-
-}
-
-
 TEST_CASE("Testing SubjectId") {
 
     struct A { int value; };
     using _subject1_t = Observer::_Subject1<A>;
     using _observer1_t = Observer::_Observer1<A>;
-
-    struct H
-    {
-        std::unordered_set<_observer1_t*> set;
-        _subject1_t subA = _subject1_t(Observer::abstract_set_view(set));
-    };
-    H h;
-    Observer::SubjectId<A> sub_id(&h.subA,&h);
-    CHECK(sub_id.value()==&h);
-   
-       /* 
-    _observer1_t obs;
     using handler_t = std::function<void(A)>;
-    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_set_view(set));
+    auto subA_id = Observer::SubjectId<A>(&subA); 
+
     int n = 0;
-    auto f = [&n](A a){ n+=a.value; };
-    subject_handlers[sub_id.value()] = f;
-    obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
-    */
+    auto h = [&n](A a){ n+=a.value; };
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
 
-        //obs.bindHandlerSubject1(h);
-    
-
-
-
+    //1. no backend
+    {
+        _observer1_t obs;
+        obs.bindHandlerSubject1(h,subA_id);
+    }
+    //2. backend
+    {
+        _observer1_t obs;
+        auto Map = Observer::abstract_map_view(subject_handlers);
+        obs.bindSubjectHandlers(Map);
+        obs.Subscribe(subA_id);
+        obs.Define(subA_id,h);
+        obs.Unsubscribe(subA_id);
+    }
 
 }
 
@@ -570,7 +514,7 @@ TEST_CASE("Testing _Observer1 / auto-Detach") {
         _observer1_t obs3;
         subA.Attach(&obs3);
         obs3.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
-        obs3.bindHandlerSubject1(h,&subA);
+        obs3.bindHandlerSubject1(h,Observer::SubjectId<A>(&subA));
         subA.Notify(A{4});
         CHECK(n==4);
     }
@@ -616,7 +560,6 @@ TEST_CASE("Testing _Observer1 / subscribe, define, unsubscribe") {
     
     int n = 0;
     auto h = [&n](A a){ n+=a.value; };
-    auto h2 = [&n](A a){ n+=a.value*2; };
     std::unordered_map<_subject1_t*,handler_t> subject_handlers;
 
     //1. no backend, no known pSub
@@ -639,10 +582,6 @@ TEST_CASE("Testing _Observer1 / subscribe, define, unsubscribe") {
         obs.bindHandlerSubject1(h,&subA);
         obs.onEvent(A{1},&subA);
         CHECK(n==1);
-        obs.Define(&subA,h2);
-        n = 0;
-        obs.onEvent(A{1},&subA);
-        CHECK(n==2);
         CHECK(obs.Unsubscribe(&subA)==true);
     }
     //3. with backend
