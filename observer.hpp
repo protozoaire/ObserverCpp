@@ -1,6 +1,6 @@
-#ifndef OBSERVER
-#  define OBSERVER
-#  define OBSERVER_INCOMPLETE
+#ifndef _SCRATCH_OBSERVER
+#  define _SCRATCH_OBSERVER
+#  define _SCRATCH_OBSERVER_INCOMPLETE
 ///////////////////////////////
 
 
@@ -322,6 +322,7 @@ AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map
 //
 //
 
+
 template <typename E>
 struct _Observer1;
 
@@ -526,9 +527,9 @@ struct _Observer
 
 
 ///////////////////////////////
-#  undef OBSERVER_INCOMPLETE
+#  undef _SCRATCH_OBSERVER_INCOMPLETE
 #else
-#  ifdef OBSERVER_INCOMPLETE
+#  ifdef _SCRATCH_OBSERVER_INCOMPLETE
 #    error circular inclusion of observer.hpp
 #  endif
 #endif
