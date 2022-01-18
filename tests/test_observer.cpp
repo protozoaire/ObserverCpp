@@ -313,12 +313,20 @@ TEST_CASE("Testing SubjectId") {
 
     int n = 0;
     auto h = [&n](A a){ n+=a.value; };
+    auto h2 = [&n](A a){ n+=2*a.value; };
     std::unordered_map<_subject1_t*,handler_t> subject_handlers;
 
     //1. no backend
     {
         _observer1_t obs;
         obs.bindHandlerSubject1(h,subA_id);
+        obs.Subscribe(subA_id);
+        n = 0;
+        obs.Define(subA_id,h2);//no op, see below
+        subA.Notify(A{1});
+        CHECK(n==1);//still bound to h;
+        obs.Unsubscribe(subA_id);
+        obs.Remove(subA_id);
     }
     //2. backend
     {
@@ -328,6 +336,7 @@ TEST_CASE("Testing SubjectId") {
         obs.Subscribe(subA_id);
         obs.Define(subA_id,h);
         obs.Unsubscribe(subA_id);
+        obs.Remove(subA_id);
     }
 
 }
@@ -548,7 +557,7 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
 }
 
 
-TEST_CASE("Testing _Observer1 / subscribe, define, unsubscribe") {
+TEST_CASE("Testing _Observer1 / subscribe, define, remove, unsubscribe") {
 
     struct A { int value; };
     using _subject1_t = Observer::_Subject1<A>;
@@ -598,6 +607,7 @@ TEST_CASE("Testing _Observer1 / subscribe, define, unsubscribe") {
         CHECK(n==1);
         CHECK(obs.Subscribe(&subA)==false);
         CHECK(obs.Unsubscribe(&subA)==true);
+        CHECK(obs.Remove(&subA)==true);
         CHECK(subject_handlers.size()==0);
         CHECK(set.size()==0);
         subA.Notify(A{1}); 

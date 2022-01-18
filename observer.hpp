@@ -447,11 +447,14 @@ struct _Observer1
     bool Subscribe(sId_t sId)
     { return sId->Attach(this); }
 
+    bool Unsubscribe(sId_t sId)
+    { return sId->Detach(this); }
+    
     void Define(sId_t sId, handler_t handler = [](E){})
     { subject_handlers.Define(sId.get(),handler); }
-
-    bool Unsubscribe(sId_t sId)
-    { return sId->Detach(this) && subject_handlers.Remove(sId.get()); }
+    
+    bool Remove(sId_t sId)
+    { return subject_handlers.Remove(sId.get()); }
 
 };
 
