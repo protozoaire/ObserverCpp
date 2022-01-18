@@ -1,41 +1,18 @@
-#ifndef OBSERVER_HPP
-  #define OBSERVER_HPP 0
-  #define OBSERVER_CTX
-////////////////////////////
+#ifndef _SCRATCH_OBSERVER
+#  define _SCRATCH_OBSERVER
+#  define _SCRATCH_OBSERVER_INCOMPLETE
+///////////////////////////////
 
 
 #include <cstddef>
 #include <type_traits>
 #include <memory>
-
-
-//  An Implementation of the Observer Pattern;
-//
-//  USAGE:
-//  
-//  - One creates an events's set, e.g.
-//      
-//      struct Event0 { ... };
-//      struct Event1 { ... };
-//      ...
-//
-//      using events_t = SubjectEvents<Event0,Event1,...>;
+#include <variant>
+#include <unordered_set>
+#include <unordered_map>
 
 
 namespace Observer {
-
-
-template <typename ... Events>
-struct SubjectEvents;
-
-template <typename E, typename _SubjectEvents>
-struct Event;
-
-
-
-//
-//
-//
 
 
 template <typename E, typename ... List>
@@ -117,6 +94,13 @@ struct SubjectEvents
         return _ForEach<_IsDefined,Events...>::value;
     }
 
+    SubjectEvents() {
+        static_assert(AssertNoDuplicate(),
+            "ERROR SubjectEvents<...>: any event can appear only once");
+        static_assert(AssertAllDefined(),
+            "ERROR SubjectEvents<...>: all events must be defined (not just declared)");
+    }
+
 };
 
 
@@ -148,13 +132,16 @@ struct IsSupportedEvent
 //
 //
 
+template <typename E, typename _SubjectEvents>
+struct Event;
 
 template <typename E, typename ... Events>
 struct Event< E, SubjectEvents<Events...> >
 {
     static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
-        "ERROR: Observer::Event<E,SubjectEvents<...>>: 'E' is not in the SubjectEvents list");
+        "ERROR Observer::Event<E,SubjectEvents<...>>: 'E' is not in the SubjectEvents list");
 };
+
 template <typename E, typename NotSubjectEvents>
 struct Event
 {
@@ -181,15 +168,368 @@ struct EventIndex< Event, SubjectEvents<Event,rEvents...> >
 { static constexpr size_t value = 0; };
 
 
+//
+//
+//
+
+
+struct NoCopy
+{
+    NoCopy(NoCopy const&) = delete;
+    NoCopy& operator=(NoCopy const&) = delete;
+
+    NoCopy(NoCopy&&) = delete;
+    NoCopy& operator=(NoCopy&&) = delete;
+
+    protected:
+    NoCopy() = default;
+};
+
+
+//
+//
+//
+
+
+template <typename T>
+struct AbstractSet
+{
+    std::function<bool(T)> Append;
+    std::function<bool(T)> Remove;
+    using F = std::function<void(T)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename T>
+AbstractSet<T> abstract_set_view(std::unordered_set<T>& set)
+{
+    auto append = [&set](T t){ return set.insert(t).second; };
+    auto remove = [&set](T t){ return set.erase(t)==1; };
+    using F = std::function<void(T)>;
+    auto signal = [&set](F f){ for(auto t : set) f(t); };
+    return {append,remove,signal};
+};
+ 
+
+//
+//
+//
+
+
+template <typename ... Ts>
+struct AbstractSetTuple
+{
+    private:
+    using impl_t = std::tuple<AbstractSet<Ts>...>;
+    impl_t impl;
+
+    public:
+    AbstractSetTuple() = default;
+
+    AbstractSetTuple(AbstractSet<Ts> ... sets)
+    : impl(sets ...)
+    {}
+
+    template <typename T>
+    AbstractSetTuple& Set(AbstractSet<T> s)
+    { std::get<AbstractSet<T>>(impl) = s; return *this; }
+
+    template <typename T>
+    AbstractSet<T> Get(T) const
+    { return std::get<AbstractSet<T>>(impl); }
+
+};
+
+template <typename ... Ts>
+AbstractSetTuple<Ts...> abstract_set_tuple_view(std::unordered_set<Ts>& ... sets)
+{
+    return { abstract_set_view(sets) ... };
+};
+
+template <typename ... Cs>
+auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
+{
+    return abstract_set_tuple_view(std::get<Cs>(tset)...);
+}
+
+template <typename ASVs, typename ... Cs>
+AbstractSetTuple<typename Cs::value_type ...> abstract_set_tuple_view(Cs& ... sets)
+{
+    return { ASVs()(sets) ... };
+};
+
+template <typename ASVs, typename ... Cs>
+auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
+{
+    return abstract_set_tuple_view<ASVs>(std::get<Cs>(tset)...);
+}
+
+
+//
+//
+//
+
+
+template <typename K, typename V>
+struct AbstractMap
+{
+    std::function<void(K,V)> Define;
+    std::function<bool(K)> Remove;
+    std::function<V(K)> Lookup;
+    using F = std::function<void(K,V)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename K, typename V>
+AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
+{
+    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); };
+    auto remove = [&map](K k){ return map.erase(k)==1; };
+    auto lookup = [&map](K k){ return map.at(k); };
+    using F = std::function<void(K,V)>; 
+    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    return {define,remove,lookup,signal};
+};
+
+
+//
+//
+//
+
+
+template <typename K, typename V>
+struct AbstractConstMap
+{
+    std::function<V(K)> Lookup;
+    using F = std::function<void(K,V)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename K, typename V>
+AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map)
+{
+    auto lookup = [&map](K k){ return map.at(k); };
+    using F = std::function<void(K,V)>; 
+    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    return {lookup,signal};
+};
+
+
+//
+//
+//
+
+
+template <typename E>
+struct _Observer1;
+
+template <typename E>
+struct _Subject1;
+
+template <typename E>
+struct SubjectId
+{
+    SubjectId(_Subject1<E>* ptr_) : ptr(ptr_) {}
+    
+    private:
+
+        _Subject1<E>* ptr;
+
+        auto operator->() const { return ptr; }
+        auto get() const { return ptr; }
+        friend _Observer1<E>;
+
+};
+
+
+template <typename E>
+using pSub_T = _Subject1<E>*;
+
+template <typename E>
+using pObs_T = _Observer1<E>*;
+
+
+//
+//
+//
+
+
+template <typename E>
+struct _Subject1
+: private NoCopy
+{
+    private:
+
+        static_assert(SubjectEvents<E>::AssertAllDefined(),
+            "ERROR Observer::_Subject1<.>: events must be defined (not just declared)");
+       
+        using pObs_t = pObs_T<E>;
+        using observers_t = AbstractSet<pObs_t>;
+        observers_t observers;
+        
+    public:
+
+    explicit _Subject1(observers_t observers_)
+    : NoCopy()
+    , observers(observers_)
+    {}
+
+    bool Attach(pObs_t pObs) 
+    { return observers.Append(pObs); }
+
+    bool Detach(pObs_t pObs)
+    { return observers.Remove(pObs); }
+
+    void Notify(E e)
+    { observers.Signal([e,this](pObs_t pObs){ pObs->onEvent(e,this); }); }
+    /* Note: not const; Observers may respond by Detaching. */
+
+    _Subject1& bindObserverSet(observers_t observers_)
+    { observers = observers_; return *this; }
+
+};  
+
+template <typename E>
+struct _Observer1
+: private NoCopy
+{
+    private:
+
+        static_assert(SubjectEvents<E>::AssertAllDefined(),
+            "ERROR Observer::_Observer1<.>: events must be defined (not just declared)");
+
+        using pSub_t = pSub_T<E>;
+        using handler_t = std::function<void(E)>;
+        using subject_handlers_t = AbstractMap<pSub_t,handler_t>;
+        using signal_func_t = std::function<void(pSub_t,handler_t)>;
+
+        static constexpr auto define_ignore = [](pSub_t,handler_t){};
+        static constexpr auto remove_ignore = [](pSub_t){ return true; };
+        static constexpr auto lookup_ignore = [](pSub_t){ return [](E){}; };
+        static constexpr auto signal_ignore = [](signal_func_t){};
+
+        static constexpr subject_handlers_t allset_ignore()
+        { return { define_ignore, remove_ignore, lookup_ignore, signal_ignore }; }
+
+        subject_handlers_t subject_handlers = allset_ignore(); 
+       
+        using sId_t = SubjectId<E>; 
+
+    public:
+
+    _Observer1() = default;
+
+    void onEvent(E e, pSub_t pSub = nullptr)
+    { subject_handlers.Lookup(pSub)(e); }
+
+    _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
+    { subject_handlers = subject_handlers_; return *this; }
+
+    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = sId_t(nullptr))
+    {
+        pSub_t pSub = sId.get();
+        subject_handlers = allset_ignore();
+        subject_handlers.Lookup = [handler](pSub_t){ return handler; };
+        if(pSub) {
+            auto detach_unique = [pSub,this](signal_func_t){ pSub->Detach(this); };
+            subject_handlers.Signal = detach_unique;
+        }
+        return *this; 
+    }
+    
+    ~_Observer1()
+    { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
+    //only works when a subject_handlers was bound;
+
+    bool Subscribe(sId_t sId)
+    { return sId->Attach(this); }
+
+    void Define(sId_t sId, handler_t handler = [](E){})
+    { subject_handlers.Define(sId.get(),handler); }
+
+    bool Unsubscribe(sId_t sId)
+    { return sId->Detach(this) && subject_handlers.Remove(sId.get()); }
+
+};
+
+
+//
+//
+//
+
+
+template <typename ... Events>
+struct _Observer;
+
+
+template <typename ... Events>
+struct _Subject
+: _Subject1<Events> ...
+{
+    private:
+
+        using events_check_t = SubjectEvents<Events...>;
+        static_assert(events_check_t::AssertNoDuplicate(),
+            "ERROR Observer::_Subject<...>: any event can appear only once");
+        
+        template <typename E>
+        using observers_T = AbstractSet<pObs_T<E>>;
+    
+    public:
+
+    explicit _Subject(observers_T<Events> ... Sets)
+    : _Subject1<Events>(Sets) ...
+    {}
+
+    explicit _Subject(AbstractSetTuple<pObs_T<Events>...> TSet)
+    : _Subject1<Events>(TSet.Get(pObs_T<Events>())) ... 
+    {}
+
+    template <typename E, typename ... Evs>
+    bool Attach(E, _Observer<Evs...>* pObs) 
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::Attach<E>: event E does not belong to subject events");
+        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
+            "ERROR Observer::_Subject<...>::Attach<E>(pObs): event E does not belong to pObs events");
+        return static_cast<_Subject1<E>*>(this)->Attach(pObs);
+    }
+
+    template <typename E, typename ... Evs>
+    bool Detach(E, _Observer<Evs...>* pObs) 
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::Detach<E>: event E does not belong to subject events");
+        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
+            "ERROR Observer::_Subject<...>::Detach<E>(pObs): event E does not belong to pObs events");
+        return static_cast<_Subject1<E>*>(this)->Detach(pObs);
+    }
+
+};
+
+template <typename ... Events>
+struct _Observer
+: _Observer1<Events> ...
+{
+    private:
+
+        using events_check_t = SubjectEvents<Events...>;
+        static_assert(events_check_t::AssertNoDuplicate(),
+            "ERROR Observer::_Observer<...>: any event can appear only once");
+
+}; 
+
+
 }//close Observer
 
 
-////////////////////////////
-#undef OBSERVER_CTX
-#undef OBSERVER_HPP
-  #define OBSERVER_HPP 1
+///////////////////////////////
+#  undef _SCRATCH_OBSERVER_INCOMPLETE
 #else
-  #if OBSERVER_HPP == 0
-  #error incomplete include of "observer.hpp"
-  #endif
+#  ifdef _SCRATCH_OBSERVER_INCOMPLETE
+#    error circular inclusion of observer.hpp
+#  endif
 #endif

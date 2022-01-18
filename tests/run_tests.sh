@@ -4,6 +4,4 @@ SRC='test_observer.cpp'
 
 g++ $OPT -o $DST $SRC
 
-./$DST
-
-rm $DST
+[ -f $DST ] && ./$DST && rm $DST
