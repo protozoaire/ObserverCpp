@@ -249,7 +249,7 @@ struct AbstractSetData
     bool Append(T t) { return this->methods.Append(t); }
     bool Remove(T t) { return this->methods.Remove(t); }
     using F = std::function<void(T)>;
-    void Signal(F f) { return this->methods.Signal(f); }
+    void Signal(F f) { this->methods.Signal(f); }
 
     private:
     using ASet_t = AbstractSet<T>;
@@ -371,6 +371,31 @@ AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
 };
 
 
+template <typename K, typename V>
+struct AbstractMapData
+: private _AbstractContainerData<AbstractMap<K,V>>
+{
+    void Define(K k, V v){ return this->methods.Define(k,v); }
+    bool Remove(K k){ return this->methods.Remove(k); }
+    auto Lookup(K k){ return this->methods.Lookup(k); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f) { this->methods.Signal(f); }
+
+    private:
+    using AMap_t = AbstractMap<K,V>;
+    using impl_t = _AbstractContainerData<AMap_t>;
+
+    public:
+    using impl_t::_AbstractContainerData;
+
+    template <typename C>
+    explicit AbstractMapData(C&& set_)
+    : impl_t(std::move(set_),&abstract_map_view<K,V>)
+    {}
+ 
+};
+
+
 //
 //
 //
@@ -392,6 +417,28 @@ AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map
     using F = std::function<void(K,V)>; 
     auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
     return {lookup,signal};
+};
+
+template <typename K, typename V>
+struct AbstractConstMapData
+: private _AbstractContainerData<AbstractConstMap<K,V>>
+{
+    auto Lookup(K k){ return this->methods.Lookup(k); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f) { this->methods.Signal(f); }
+
+    private:
+    using AMap_t = AbstractConstMap<K,V>;
+    using impl_t = _AbstractContainerData<AMap_t>;
+
+    public:
+    using impl_t::_AbstractContainerData;
+
+    template <typename C>
+    explicit AbstractConstMapData(C&& set_)
+    : impl_t(std::move(set_),&abstract_const_map_view<K,V>)
+    {}
+ 
 };
 
 

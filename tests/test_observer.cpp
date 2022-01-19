@@ -705,7 +705,7 @@ TEST_CASE("Testing _Subject") {
 }
 
 
-TEST_CASE("Testing _AbstractContainerData and derived") {
+TEST_CASE("Testing AbstractSetData") {
 
     using cont_t = std::unordered_set<int>;
     auto pOpaque = Observer::make_opaque(cont_t());
@@ -734,7 +734,39 @@ TEST_CASE("Testing _AbstractContainerData and derived") {
     CHECK(std::is_move_constructible<Set_t>::value == true);
     CHECK(std::is_move_assignable<Set_t>::value == true);
  
-    //TODO ConstMap, Map 
+}
+
+
+TEST_CASE("Testing AbstractMapData") {
+
+    using map_t = std::unordered_map<char,int>;
+    auto Map = Observer::AbstractMapData<char,int>(map_t());
+    Map.Define('a',4);
+    CHECK(Map.Remove('a')==true);
+
+    //with custom abstract_set_view object
+    auto asv = [](map_t& map){ return Observer::abstract_map_view(map); };
+    auto Map2 = Observer::AbstractMapData<char,int>(map_t(),asv);
+    Map2.Define('a',4);
+    CHECK(Map2.Remove('a')==true);
+
+}
+
+
+TEST_CASE("Testing AbstractConstMapData") {
+
+    using map_t = std::unordered_map<char,int>;
+    map_t map;
+    map['a'] = 4;
+    auto Map = Observer::AbstractConstMapData<char,int>(std::move(map));
+    CHECK(Map.Lookup('a')==4);
+
+    //with custom abstract_set_view object
+    auto asv = [](map_t& map){ return Observer::abstract_const_map_view(map); };
+    map.clear();
+    map['a'] = 4;
+    auto Map2 = Observer::AbstractConstMapData<char,int>(std::move(map),asv);
+    CHECK(Map2.Lookup('a')==4);
 
 }
 
