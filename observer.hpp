@@ -539,10 +539,16 @@ struct _Observer1;
 template <typename E>
 struct _Subject1;
 
+template <typename ... Events>
+struct _Observer;
+
+template <typename ... Events>
+struct _Subject;
+
 template <typename E>
-struct SubjectId
+struct SubjectID
 {
-    SubjectId(_Subject1<E>* ptr_) : ptr(ptr_) {}
+    SubjectID(_Subject1<E>* ptr_) : ptr(ptr_) {}
     
     private:
 
@@ -554,6 +560,20 @@ struct SubjectId
 
 };
 
+template <typename E>
+struct ObserverID
+{
+    ObserverID(_Observer1<E>* ptr_) : ptr(ptr_) {}
+
+    private:
+
+        _Observer1<E>* ptr;
+
+        auto operator->() const { return ptr; }
+        auto get() const { return ptr; }
+        friend _Subject1<E>;
+
+};
 
 template <typename E>
 using pSub_T = _Subject1<E>*;
@@ -583,6 +603,8 @@ struct _Subject1
         using observers_t = AbstractSetVariant<pObs_t>;
         observers_t observers;
         
+        using oId_t = ObserverID<E>; 
+    
     public:
 
     explicit _Subject1(observers_view_t observers_)
@@ -595,11 +617,11 @@ struct _Subject1
     , observers(std::move(observers_))
     {}
 
-    bool Attach(pObs_t pObs) 
-    { return observers.Append(pObs); }
+    bool Attach(oId_t oId) 
+    { return observers.Append(oId.get()); }
 
-    bool Detach(pObs_t pObs)
-    { return observers.Remove(pObs); }
+    bool Detach(oId_t oId)
+    { return observers.Remove(oId.get()); }
 
     void Notify(E e)
     { observers.Signal([e,this](pObs_t pObs){ pObs->onEvent(e,this); }); }
@@ -641,7 +663,7 @@ struct _Observer1
 
         subject_handlers_t subject_handlers; 
        
-        using sId_t = SubjectId<E>; 
+        using sId_t = SubjectID<E>; 
         
         using subject_handlers_const_view_t = AbstractConstMap<pSub_t,handler_t>;
         using subject_handlers_const_data_t = AbstractConstMapData<pSub_t,handler_t>;
@@ -661,7 +683,13 @@ struct _Observer1
     _Observer1& bindSubjectHandlers(subject_handlers_const_view_t subject_handlers_)
     { subject_handlers = MapEmbedConstMap(subject_handlers_); return *this; }
 
-    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = sId_t(nullptr))
+    _Observer1& bindSubjectHandlers(subject_handlers_data_t&& subject_handlers_)
+    { subject_handlers = std::move(subject_handlers_); return *this; }
+    
+    _Observer1& bindSubjectHandlers(subject_handlers_const_data_t&& subject_handlers_)
+    { subject_handlers = MapEmbedConstMap(std::move(subject_handlers_)); return *this; }
+
+    _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = nullptr)
     {
         pSub_t pSub = sId.get();
         auto unique_handler = [handler](pSub_t){ return handler; };
@@ -674,13 +702,7 @@ struct _Observer1
         subject_handlers = view;
         return *this;
     }
-   
-    _Observer1& bindSubjectHandlers(subject_handlers_data_t&& subject_handlers_)
-    { subject_handlers = std::move(subject_handlers_); return *this; }
-    
-    _Observer1& bindSubjectHandlers(subject_handlers_const_data_t&& subject_handlers_)
-    { subject_handlers = MapEmbedConstMap(std::move(subject_handlers_)); return *this; }
-    
+  
     ~_Observer1()
     { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
     //only works when a subject_handlers was bound;
@@ -720,40 +742,46 @@ struct _Subject
             "ERROR Observer::_Subject<...>: any event can appear only once");
         
         template <typename E>
-        using observers_T = AbstractSet<pObs_T<E>>;
+        using observers_view_T = AbstractSet<pObs_T<E>>;
     
+        template <typename E>
+        using observers_data_T = AbstractSetData<pObs_T<E>>;
+
+        template <typename E>
+        using observers_T = AbstractSetVariant<pObs_T<E>>;
+        
         template <typename E>
         auto _this() { return static_cast<_Subject1<E>*>(this); }
 
 
     public:
 
-    explicit _Subject(observers_T<Events> ... Sets)
+    explicit _Subject(observers_view_T<Events> ... Sets)
     : _Subject1<Events>(Sets) ...
     {}
 
+    explicit _Subject(observers_data_T<Events>&& ... Sets)
+    : _Subject1<Events>(std::move(Sets)) ...
+    {}
+   
     explicit _Subject(AbstractSetTuple<pObs_T<Events>...> TSet)
     : _Subject1<Events>(TSet.Get(pObs_T<Events>())) ... 
     {}
 
-    template <typename E, typename ... Evs>
-    bool Attach(E, _Observer<Evs...>* pObs) 
+    template <typename E>
+    bool Attach(E, ObserverID<E> oId) 
     { 
         static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
             "ERROR Observer::_Subject<...>::Attach<E>: event E does not belong to subject events");
-        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
-            "ERROR Observer::_Subject<...>::Attach<E>(pObs): event E does not belong to pObs events");
-        return _this<E>()->Attach(pObs);
+        return _this<E>()->Attach(oId);
     }
 
-    template <typename E, typename ... Evs>
-    bool Detach(E, _Observer<Evs...>* pObs) 
+    template <typename E>
+    bool Detach(E, ObserverID<E> oId) 
     { 
         static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
             "ERROR Observer::_Subject<...>::Detach<E>: event E does not belong to subject events");
-        static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
-            "ERROR Observer::_Subject<...>::Detach<E>(pObs): event E does not belong to pObs events");
-        return _this<E>()->Detach(pObs);
+        return _this<E>()->Detach(oId);
     }
     
     template <typename E>
@@ -765,11 +793,19 @@ struct _Subject
     }
     
     template <typename E>
-    _Subject& bindObserverSet(observers_T<E> observers_)
+    _Subject& bindObserverSet(E, observers_view_T<E> observers_)
     {
         static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
             "ERROR Observer::_Subject<...>::bindObserverSet<E>: event E does not belong to subject events");
         _this<E>()->bindObserverSet(observers_); return *this;
+    }
+
+    template <typename E>
+    _Subject& bindObserverSet(E, observers_data_T<E>&& observers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::bindObserverSet<E>: event E does not belong to subject events");
+        _this<E>()->bindObserverSet(std::move(observers_)); return *this;
     }
 
 };
@@ -783,6 +819,98 @@ struct _Observer
         using events_check_t = SubjectEvents<Events...>;
         static_assert(events_check_t::AssertNoDuplicate(),
             "ERROR Observer::_Observer<...>: any event can appear only once");
+
+        template <typename E>
+        auto _this() { return static_cast<_Observer1<E>*>(this); }
+    
+        template <typename E>
+        using handler_T = std::function<void(E)>;
+
+        template <typename E>
+        using subject_handlers_view_T = AbstractMap<pSub_T<E>,handler_T<E>>;
+        
+        template <typename E>
+        using subject_handlers_const_view_T = AbstractConstMap<pSub_T<E>,handler_T<E>>;
+
+        template <typename E>
+        using subject_handlers_data_T = AbstractMapData<pSub_T<E>,handler_T<E>>;
+        
+        template <typename E>
+        using subject_handlers_const_data_T = AbstractConstMapData<pSub_T<E>,handler_T<E>>;
+
+    public:
+
+    template <typename E>
+    _Observer& bindSubjectHandlers(E, subject_handlers_view_T<E> subject_handlers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::bindSubjectHandlers<E>(view): event E does not belong to observer events");
+        _this<E>()->bindSubjectHandlers(subject_handlers_); return *this;
+    }
+    
+    template <typename E>
+    _Observer& bindSubjectHandlers(E, subject_handlers_const_view_T<E> subject_handlers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::bindSubjectHandlers<E>(const_view): event E does not belong to observer events");
+        _this<E>()->bindSubjectHandlers(subject_handlers_); return *this;
+    }
+    
+    template <typename E>
+    _Observer& bindSubjectHandlers(E, subject_handlers_data_T<E>&& subject_handlers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::bindSubjectHandlers<E>(data): event E does not belong to observer events");
+        _this<E>()->bindSubjectHandlers(std::move(subject_handlers_)); return *this;
+    }
+
+    template <typename E>
+    _Observer& bindSubjectHandlers(E, subject_handlers_const_data_T<E>&& subject_handlers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::bindSubjectHandlers<E>(const_data): event E does not belong to observer events");
+        _this<E>()->bindSubjectHandlers(std::move(subject_handlers_)); return *this;
+    }
+    
+    template <typename E, typename H>
+    _Observer& bindHandlerSubject1(E, H handler = [](E){}, SubjectID<E> sId = nullptr)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::bindHandlerSubject1<E>: event E does not belong to observer events");
+        _this<E>()->bindHandlerSubject1(handler,sId); return *this;
+    }
+ 
+    template <typename E>
+    bool Subscribe(E, SubjectID<E> sId)
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::Subscribe<E>: event E does not belong to observer events");
+        return _this<E>()->Subscribe(sId);
+    }
+
+    template <typename E>
+    bool Unsubscribe(E, SubjectID<E> sId)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::Unsubscribe<E>: event E does not belong to observer events");
+        return _this<E>()->Unsubscribe(sId);
+    }
+     
+    template <typename E, typename H>
+    void Define(E, SubjectID<E> sId, H handler = [](E){})
+    { 
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::Define<E>: event E does not belong to observer events");
+        return _this<E>()->Define(sId,handler);
+    }
+    
+    template <typename E>
+    bool Remove(E, SubjectID<E> sId)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Observer<...>::Remove<E>: event E does not belong to observer events");
+        return _this<E>()->Remove(sId);
+    }
 
 }; 
 
