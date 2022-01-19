@@ -702,10 +702,39 @@ TEST_CASE("Testing _AbstractContainerData and derived") {
     CHECK(std::is_copy_assignable<Set_t>::value == false);
     CHECK(std::is_move_constructible<Set_t>::value == true);
     CHECK(std::is_move_assignable<Set_t>::value == true);
-
-
  
-    
+    //TODO ConstMap, Map 
 
+}
+
+
+TEST_CASE("Testing AbstractSetVariant") {
+
+    using set_t = std::unordered_set<int>;
+    set_t _set = set_t();
+
+    using vSet_t = Observer::AbstractSet<int>;
+    using dSet_t = Observer::AbstractSetData<int>;
+
+    auto vSet = Observer::abstract_set_view(_set);
+    auto dSet = Observer::AbstractSetData<int>(set_t());
+    
+    auto Set = std::variant<vSet_t,dSet_t>(vSet);
+    CHECK(std::visit([](auto&& s){ return s.Append(4); },Set)==true);
+    CHECK(_set.size()==1);
+    Set = std::move(dSet);
+    CHECK(std::visit([](auto&& s){ return s.Append(5); },Set)==true);
+    CHECK(_set.size()==1);
+    
+    auto Set2 = Observer::AbstractSetVariant<int>(vSet);
+    _set.clear();
+    CHECK(Set2.Append(4)==true);
+    CHECK(_set.size()==1);
+    Set2 = vSet;
+    CHECK(Set2.Append(5)==true);
+    CHECK(_set.size()==2);
+    Set2 = Observer::AbstractSetData<int>(set_t());
+    CHECK(Set2.Append(5)==true);
+    CHECK(_set.size()==2);
 
 }

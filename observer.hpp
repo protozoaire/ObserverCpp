@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <type_traits>
 #include <memory>
+#include <variant>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -262,6 +263,29 @@ struct AbstractSetData
     : impl_t(std::move(set_),&abstract_set_view<T>)
     {}
  
+};
+
+
+template <typename T>
+struct AbstractSetVariant
+{
+    bool Append(T t) { return std::visit([t](auto&& s){ return s.Append(t); },any); }
+    bool Remove(T t) { return std::visit([t](auto&& s){ return s.Remove(t); },any); }
+    using F = std::function<void(T)>;
+    void Signal(F f) { std::visit([f](auto&& s){ return s.Signal(f); },any); }
+
+    private:
+    using view_t = AbstractSet<T>;
+    using data_t = AbstractSetData<T>;
+    std::variant<view_t,data_t> any;
+
+    public:
+    explicit AbstractSetVariant(view_t v) : any(v) {}
+    AbstractSetVariant& operator=(view_t v) { any = v; return *this; }
+    
+    explicit AbstractSetVariant(data_t&& d) : any(std::move(d)) {} 
+    AbstractSetVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
+
 };
 
 
