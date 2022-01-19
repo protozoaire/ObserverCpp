@@ -272,7 +272,7 @@ struct AbstractSetVariant
     bool Append(T t) { return std::visit([t](auto&& s){ return s.Append(t); },any); }
     bool Remove(T t) { return std::visit([t](auto&& s){ return s.Remove(t); },any); }
     using F = std::function<void(T)>;
-    void Signal(F f) { std::visit([f](auto&& s){ return s.Signal(f); },any); }
+    void Signal(F f) { std::visit([f](auto&& s){ s.Signal(f); },any); }
 
     private:
     using view_t = AbstractSet<T>;
@@ -375,7 +375,7 @@ template <typename K, typename V>
 struct AbstractMapData
 : private _AbstractContainerData<AbstractMap<K,V>>
 {
-    void Define(K k, V v){ return this->methods.Define(k,v); }
+    void Define(K k, V v){ this->methods.Define(k,v); }
     bool Remove(K k){ return this->methods.Remove(k); }
     auto Lookup(K k){ return this->methods.Lookup(k); }
     using F = std::function<void(K,V)>;
@@ -393,6 +393,30 @@ struct AbstractMapData
     : impl_t(std::move(set_),&abstract_map_view<K,V>)
     {}
  
+};
+
+
+template <typename K, typename V>
+struct AbstractMapVariant
+{
+    void Define(K k, V v){ std::visit([k,v](auto&& m){ m.Define(k,v); },any); }
+    bool Remove(K k){ return std::visit([k](auto&& m){ return m.Remove(k); },any); }
+    auto Lookup(K k){ return std::visit([k](auto&& m){ return m.Lookup(k); },any); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f){ std::visit([f](auto&& m){ m.Signal(f); },any); }
+
+    private:
+    using view_t = AbstractMap<K,V>;
+    using data_t = AbstractMapData<K,V>;
+    std::variant<view_t,data_t> any;
+
+    public:
+    explicit AbstractMapVariant(view_t v) : any(v) {}
+    AbstractMapVariant& operator=(view_t v) { any = v; return *this; }
+    
+    explicit AbstractMapVariant(data_t&& d) : any(std::move(d)) {} 
+    AbstractMapVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
+
 };
 
 
@@ -419,6 +443,7 @@ AbstractConstMap<K,V> abstract_const_map_view(std::unordered_map<K,V> const& map
     return {lookup,signal};
 };
 
+
 template <typename K, typename V>
 struct AbstractConstMapData
 : private _AbstractContainerData<AbstractConstMap<K,V>>
@@ -439,6 +464,28 @@ struct AbstractConstMapData
     : impl_t(std::move(set_),&abstract_const_map_view<K,V>)
     {}
  
+};
+
+
+template <typename K, typename V>
+struct AbstractConstMapVariant
+{
+    auto Lookup(K k){ return std::visit([k](auto&& m){ return m.Lookup(k); },any); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f){ std::visit([f](auto&& m){ m.Signal(f); },any); }
+
+    private:
+    using view_t = AbstractConstMap<K,V>;
+    using data_t = AbstractConstMapData<K,V>;
+    std::variant<view_t,data_t> any;
+
+    public:
+    explicit AbstractConstMapVariant(view_t v) : any(v) {}
+    AbstractConstMapVariant& operator=(view_t v) { any = v; return *this; }
+    
+    explicit AbstractConstMapVariant(data_t&& d) : any(std::move(d)) {} 
+    AbstractConstMapVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
+
 };
 
 

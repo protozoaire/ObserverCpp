@@ -803,3 +803,65 @@ TEST_CASE("Testing AbstractSetVariant") {
 }
 
 
+TEST_CASE("Testing AbstractMapVariant") {
+
+    using map_t = std::unordered_map<char,int>;
+    map_t _map = map_t();
+
+    using vMap_t = Observer::AbstractMap<char,int>;
+    using dMap_t = Observer::AbstractMapData<char,int>;
+
+    auto vMap = Observer::abstract_map_view(_map);
+    auto dMap = Observer::AbstractMapData<char,int>(map_t());
+    
+    auto Map = std::variant<vMap_t,dMap_t>(vMap);
+    std::visit([](auto&& m){ m.Define('a',4); },Map);
+    CHECK(_map.size()==1);
+    Map = std::move(dMap);
+    std::visit([](auto&& m){ m.Define('a',4); },Map);
+    CHECK(_map.size()==1);
+   
+    auto Map2 = Observer::AbstractMapVariant<char,int>(vMap);
+    _map.clear();
+    Map2.Define('a',4);
+    CHECK(_map.size()==1);
+    Map2 = vMap;
+    Map2.Define('b',5);
+    CHECK(_map.size()==2);
+    Map2 = Observer::AbstractMapData<char,int>(map_t());
+    Map2.Define('b',5);
+    CHECK(_map.size()==2);
+
+}
+
+
+TEST_CASE("Testing AbstractMapVariant") {
+
+    using map_t = std::unordered_map<char,int>;
+    map_t _map = map_t();
+    _map['a'] = 4;
+
+    using vMap_t = Observer::AbstractConstMap<char,int>;
+    using dMap_t = Observer::AbstractConstMapData<char,int>;
+
+    auto vMap = Observer::abstract_const_map_view(_map);
+    
+    auto Map = std::variant<vMap_t,dMap_t>(vMap);
+    CHECK(std::visit([](auto&& m){ return m.Lookup('a'); },Map)==4);
+    CHECK(_map.size()==1);
+    _map['a'] = 5;
+    auto dMap = Observer::AbstractConstMapData<char,int>(std::move(_map));
+    Map = std::move(dMap);
+    CHECK(std::visit([](auto&& m){ return m.Lookup('a'); },Map)==5);
+   
+    auto Map2 = Observer::AbstractConstMapVariant<char,int>(vMap);
+    _map = map_t();
+    _map['a'] = 4;
+    CHECK(Map2.Lookup('a')==4);
+    CHECK(_map.size()==1);
+    Map2 = vMap;
+    _map['a'] = 5;
+    Map2 = Observer::AbstractConstMapData<char,int>(std::move(_map));
+    CHECK(Map2.Lookup('a')==5);
+
+}
