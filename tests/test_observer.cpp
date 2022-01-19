@@ -568,7 +568,8 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     using _observer1_t = Observer::_Observer1<A>;
 
     //impl: view
-    std::unordered_set<_observer1_t*> set;
+    using set_t = std::unordered_set<_observer1_t*>;
+    set_t set;
     _subject1_t subA(Observer::abstract_set_view(set));
     _observer1_t obs; 
     CHECK(set.size()==0);
@@ -586,11 +587,77 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     //impl: data
     _subject1_t subA2(Observer::AbstractSetData<_observer1_t*>(std::move(set)));
     CHECK(subA2.Attach(&obs)==false);//already here
+    subA.bindObserverSet(Observer::abstract_set_data(set_t()));
+    set = set_t();
+    set.insert(&obs);
+    subA.bindObserverSet(Observer::abstract_set_data(std::move(set)));
+    CHECK(subA.Attach(&obs)==false);//already here
 
 }
 
 
-TEST_CASE("Testing _Observer1 / subscribe, define, remove, unsubscribe") {
+TEST_CASE("Testing _Observer1 / backend rebinding, const ops") {
+
+    //_Observer1<typename E>
+    struct A { int value; };
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
+    using handler_t = std::function<void(A)>;
+
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::abstract_set_view(set));
+    
+    int n = 0;
+    auto h = [&n](A a){ n+=a.value; };
+    std::unordered_map<_subject1_t*,handler_t> subject_handlers;
+    
+    //single handler
+    {
+        _observer1_t obs;
+        subA.Attach(&obs);
+        obs.bindHandlerSubject1(h);
+        subA.Notify(A{3});
+        CHECK(n==3);
+    }
+    CHECK(set.size()==1);//no auto-detach
+    set.clear();
+    n = 0;
+
+    //map view
+    {
+        _observer1_t obs;
+        obs.bindSubjectHandlers(Observer::abstract_map_view(subject_handlers));
+        subject_handlers[&subA] = h;
+        subA.Attach(&obs);
+        subA.Notify(A{3});
+        CHECK(n==3);
+        obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        subA.Notify(A{2});
+        CHECK(n==5);
+    }
+    CHECK(set.size()==0);//auto-detach
+    n = 0;
+
+    //map data
+    {
+        std::unordered_map<_subject1_t*,handler_t> sh;
+        sh[&subA] = h;
+        auto sh2 = sh;
+        _observer1_t obs;
+        obs.bindSubjectHandlers(Observer::abstract_map_data(std::move(sh)));
+        subA.Attach(&obs);
+        subA.Notify(A{3});
+        CHECK(n==3);
+        obs.bindSubjectHandlers(Observer::abstract_const_map_data(std::move(sh2)));
+        subA.Notify(A{2});
+        CHECK(n==5);
+    }
+    CHECK(set.size()==0);//auto-detach
+
+}
+
+
+TEST_CASE("Testing _Observer1 / define, remove + (subscribe, unsubscribe)") {
 
     struct A { int value; };
     using _subject1_t = Observer::_Subject1<A>;
@@ -626,7 +693,7 @@ TEST_CASE("Testing _Observer1 / subscribe, define, remove, unsubscribe") {
         CHECK(n==1);
         CHECK(obs.Unsubscribe(&subA)==true);
     }
-    //3. with backend
+    //3. with backend view
     n = 0;
     set.clear();
     {
@@ -645,6 +712,42 @@ TEST_CASE("Testing _Observer1 / subscribe, define, remove, unsubscribe") {
         CHECK(set.size()==0);
         subA.Notify(A{1}); 
         CHECK(n==1);
+    }
+    //4. with const backend view
+    n = 0;
+    set.clear();
+    {
+        _observer1_t obs;
+        obs.bindSubjectHandlers(Observer::abstract_const_map_view(subject_handlers));
+        CHECK(set.count(&obs)==0);
+        obs.Define(&subA,h);
+        CHECK(subject_handlers.size()==0);//Define does not work on Const backend
+        CHECK(obs.Remove(&subA)==false);
+        CHECK(obs.Remove(&subA)==false);//Remove always return true when disabled
+    }
+    //5. with backend data
+    n = 0;
+    set.clear();
+    {
+        _observer1_t obs;
+        auto sh = subject_handlers;
+        obs.bindSubjectHandlers(Observer::abstract_map_data(std::move(sh)));
+        obs.Define(&subA,h);
+        CHECK(obs.Remove(&subA)==true);
+        CHECK(obs.Remove(&subA)==false);//already removed
+        _subject1_t subA_(Observer::abstract_set_view(set));
+        CHECK(obs.Remove(&subA_)==false);//never registered
+    }
+    //6. with const backend data
+    n = 0;
+    set.clear();
+    {
+        _observer1_t obs;
+        auto sh = subject_handlers;
+        obs.bindSubjectHandlers(Observer::abstract_const_map_data(std::move(sh)));
+        obs.Define(&subA,h);
+        CHECK(obs.Remove(&subA)==false);//Define does not work on Const backend
+        _subject1_t subA_(Observer::abstract_set_view(set));
     }
 
 }

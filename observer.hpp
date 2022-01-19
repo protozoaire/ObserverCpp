@@ -213,6 +213,10 @@ struct _AbstractContainerData
     , methods(acv(*static_cast<C*>(pData.get())))
     {}
 
+    explicit _AbstractContainerData(opaque_data_ptr_t&& pData_, AC methods_)
+    : pData(std::move(pData_)),methods(methods_)
+    {}
+
 };
 
 
@@ -264,6 +268,11 @@ struct AbstractSetData
     {}
  
 };
+
+
+template <typename T>
+AbstractSetData<T> abstract_set_data(std::unordered_set<T>&& set)
+{ return AbstractSetData<T>(std::move(set)); }
 
 
 template <typename T>
@@ -349,83 +358,6 @@ auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
 
 
 template <typename K, typename V>
-struct AbstractMap
-{
-    std::function<void(K,V)> Define;
-    std::function<bool(K)> Remove;
-    std::function<V(K)> Lookup;
-    using F = std::function<void(K,V)>;
-    std::function<void(F)> Signal;
-};
-
-
-template <typename K, typename V>
-AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
-{
-    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); };
-    auto remove = [&map](K k){ return map.erase(k)==1; };
-    auto lookup = [&map](K k){ return map.at(k); };
-    using F = std::function<void(K,V)>; 
-    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
-    return {define,remove,lookup,signal};
-};
-
-
-template <typename K, typename V>
-struct AbstractMapData
-: private _AbstractContainerData<AbstractMap<K,V>>
-{
-    void Define(K k, V v){ this->methods.Define(k,v); }
-    bool Remove(K k){ return this->methods.Remove(k); }
-    auto Lookup(K k){ return this->methods.Lookup(k); }
-    using F = std::function<void(K,V)>;
-    void Signal(F f) { this->methods.Signal(f); }
-
-    private:
-    using AMap_t = AbstractMap<K,V>;
-    using impl_t = _AbstractContainerData<AMap_t>;
-
-    public:
-    using impl_t::_AbstractContainerData;
-
-    template <typename C>
-    explicit AbstractMapData(C&& set_)
-    : impl_t(std::move(set_),&abstract_map_view<K,V>)
-    {}
- 
-};
-
-
-template <typename K, typename V>
-struct AbstractMapVariant
-{
-    void Define(K k, V v){ std::visit([k,v](auto&& m){ m.Define(k,v); },any); }
-    bool Remove(K k){ return std::visit([k](auto&& m){ return m.Remove(k); },any); }
-    auto Lookup(K k){ return std::visit([k](auto&& m){ return m.Lookup(k); },any); }
-    using F = std::function<void(K,V)>;
-    void Signal(F f){ std::visit([f](auto&& m){ m.Signal(f); },any); }
-
-    private:
-    using view_t = AbstractMap<K,V>;
-    using data_t = AbstractMapData<K,V>;
-    std::variant<view_t,data_t> any;
-
-    public:
-    explicit AbstractMapVariant(view_t v) : any(v) {}
-    AbstractMapVariant& operator=(view_t v) { any = v; return *this; }
-    
-    explicit AbstractMapVariant(data_t&& d) : any(std::move(d)) {} 
-    AbstractMapVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
-
-};
-
-
-//
-//
-//
-
-
-template <typename K, typename V>
 struct AbstractConstMap
 {
     std::function<V(K)> Lookup;
@@ -455,16 +387,24 @@ struct AbstractConstMapData
     private:
     using AMap_t = AbstractConstMap<K,V>;
     using impl_t = _AbstractContainerData<AMap_t>;
+   
+    template <typename,typename>
+    friend struct AbstractMapData;
 
     public:
     using impl_t::_AbstractContainerData;
 
     template <typename C>
-    explicit AbstractConstMapData(C&& set_)
-    : impl_t(std::move(set_),&abstract_const_map_view<K,V>)
+    explicit AbstractConstMapData(C&& map_)
+    : impl_t(std::move(map_),&abstract_const_map_view<K,V>)
     {}
  
 };
+
+
+template <typename K, typename V>
+AbstractConstMapData<K,V> abstract_const_map_data(std::unordered_map<K,V>&& map)
+{ return AbstractConstMapData<K,V>(std::move(map)); }
 
 
 template <typename K, typename V>
@@ -487,6 +427,105 @@ struct AbstractConstMapVariant
     AbstractConstMapVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
 
 };
+
+
+//
+//
+//
+
+
+template <typename K, typename V>
+struct AbstractMap
+{
+    std::function<void(K,V)> Define; 
+    std::function<bool(K)> Remove;
+    std::function<V(K)> Lookup;
+    using F = std::function<void(K,V)>;
+    std::function<void(F)> Signal;
+};
+
+
+template <typename K, typename V>
+AbstractMap<K,V> abstract_map_view(std::unordered_map<K,V>& map)
+{
+    auto define = [&map](K k, V v){ map.insert_or_assign(k,v); };
+    auto remove = [&map](K k){ return map.erase(k)==1; };
+    auto lookup = [&map](K k){ return map.at(k); };
+    using F = std::function<void(K,V)>; 
+    auto signal = [&map](F f){ for(auto [k,v] : map) f(k,v); }; 
+    return {define,remove,lookup,signal};
+};
+
+template <typename K, typename V>
+AbstractMap<K,V> MapEmbedConstMap(AbstractConstMap<K,V> m)
+{
+    static constexpr auto define_ignore = [](K,V){};
+    static constexpr auto remove_ignore = [](K){ return false; };
+    return { define_ignore, remove_ignore, m.Lookup, m.Signal };
+}
+
+
+template <typename K, typename V>
+struct AbstractMapData
+: private _AbstractContainerData<AbstractMap<K,V>>
+{
+    void Define(K k, V v){ this->methods.Define(k,v); }
+    bool Remove(K k){ return this->methods.Remove(k); }
+    auto Lookup(K k){ return this->methods.Lookup(k); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f) { this->methods.Signal(f); }
+
+    private:
+    using AMap_t = AbstractMap<K,V>;
+    using impl_t = _AbstractContainerData<AMap_t>;
+
+    public:
+    using impl_t::_AbstractContainerData;
+
+    template <typename C>
+    explicit AbstractMapData(C&& map_)
+    : impl_t(std::move(map_),&abstract_map_view<K,V>)
+    {}
+
+    explicit AbstractMapData(AbstractConstMapData<K,V>&& cmap)
+    : impl_t(std::move(cmap.pData),MapEmbedConstMap(cmap.methods))
+    {}
+
+};
+
+
+template <typename K, typename V>
+AbstractMapData<K,V> abstract_map_data(std::unordered_map<K,V>&& map)
+{ return AbstractMapData<K,V>(std::move(map)); }
+
+
+template <typename K, typename V>
+struct AbstractMapVariant
+{
+    void Define(K k, V v){ std::visit([k,v](auto&& m){ m.Define(k,v); },any); }
+    bool Remove(K k){ return std::visit([k](auto&& m){ return m.Remove(k); },any); }
+    auto Lookup(K k){ return std::visit([k](auto&& m){ return m.Lookup(k); },any); }
+    using F = std::function<void(K,V)>;
+    void Signal(F f){ std::visit([f](auto&& m){ m.Signal(f); },any); }
+
+    private:
+    using view_t = AbstractMap<K,V>;
+    using data_t = AbstractMapData<K,V>;
+    std::variant<view_t,data_t> any;
+
+    public:
+    explicit AbstractMapVariant(view_t v) : any(v) {}
+    AbstractMapVariant& operator=(view_t v) { any = v; return *this; }
+    
+    explicit AbstractMapVariant(data_t&& d) : any(std::move(d)) {} 
+    AbstractMapVariant& operator=(data_t&& d) { any = std::move(d); return *this; } 
+
+};
+
+
+template <typename K, typename V>
+AbstractMapData<K,V> MapEmbedConstMap(AbstractConstMapData<K,V>&& m)
+{ return AbstractMapData<K,V>(std::move(m)); }
 
 
 //
@@ -569,7 +608,7 @@ struct _Subject1
     _Subject1& bindObserverSet(observers_view_t observers_)
     { observers = observers_; return *this; }
 
-    _Subject1& bindObserverSet(observers_data_t observers_)
+    _Subject1& bindObserverSet(observers_data_t&& observers_)
     { observers = std::move(observers_); return *this; }
 
 };  
@@ -586,42 +625,61 @@ struct _Observer1
 
         using pSub_t = pSub_T<E>;
         using handler_t = std::function<void(E)>;
-        using subject_handlers_t = AbstractMap<pSub_t,handler_t>;
+        
+        using subject_handlers_view_t = AbstractMap<pSub_t,handler_t>;
+        using subject_handlers_data_t = AbstractMapData<pSub_t,handler_t>;
+        using subject_handlers_t = AbstractMapVariant<pSub_t,handler_t>;
         using signal_func_t = std::function<void(pSub_t,handler_t)>;
 
         static constexpr auto define_ignore = [](pSub_t,handler_t){};
-        static constexpr auto remove_ignore = [](pSub_t){ return true; };
+        static constexpr auto remove_ignore = [](pSub_t){ return false; };
         static constexpr auto lookup_ignore = [](pSub_t){ return [](E){}; };
         static constexpr auto signal_ignore = [](signal_func_t){};
 
-        static constexpr subject_handlers_t allset_ignore()
+        static constexpr subject_handlers_view_t allset_ignore()
         { return { define_ignore, remove_ignore, lookup_ignore, signal_ignore }; }
 
-        subject_handlers_t subject_handlers = allset_ignore(); 
+        subject_handlers_t subject_handlers; 
        
         using sId_t = SubjectId<E>; 
+        
+        using subject_handlers_const_view_t = AbstractConstMap<pSub_t,handler_t>;
+        using subject_handlers_const_data_t = AbstractConstMapData<pSub_t,handler_t>;
 
     public:
 
-    _Observer1() = default;
+    _Observer1()
+    : subject_handlers(allset_ignore())
+    {}
 
     void onEvent(E e, pSub_t pSub = nullptr)
     { subject_handlers.Lookup(pSub)(e); }
 
-    _Observer1& bindSubjectHandlers(subject_handlers_t subject_handlers_)
+    _Observer1& bindSubjectHandlers(subject_handlers_view_t subject_handlers_)
     { subject_handlers = subject_handlers_; return *this; }
+    
+    _Observer1& bindSubjectHandlers(subject_handlers_const_view_t subject_handlers_)
+    { subject_handlers = MapEmbedConstMap(subject_handlers_); return *this; }
 
     _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = sId_t(nullptr))
     {
         pSub_t pSub = sId.get();
-        subject_handlers = allset_ignore();
-        subject_handlers.Lookup = [handler](pSub_t){ return handler; };
-        if(pSub) {
-            auto detach_unique = [pSub,this](signal_func_t){ pSub->Detach(this); };
-            subject_handlers.Signal = detach_unique;
-        }
-        return *this; 
+        auto unique_handler = [handler](pSub_t){ return handler; };
+        auto detach_unique = [pSub,this](signal_func_t){ pSub->Detach(this); };
+        //prepare new view
+        subject_handlers_view_t view = allset_ignore();
+        view.Lookup = unique_handler;
+        if(pSub) view.Signal = detach_unique;
+        //commit view
+        subject_handlers = view;
+        return *this;
     }
+   
+    _Observer1& bindSubjectHandlers(subject_handlers_data_t&& subject_handlers_)
+    { subject_handlers = std::move(subject_handlers_); return *this; }
+    
+    _Observer1& bindSubjectHandlers(subject_handlers_const_data_t&& subject_handlers_)
+    { subject_handlers = MapEmbedConstMap(std::move(subject_handlers_)); return *this; }
     
     ~_Observer1()
     { subject_handlers.Signal([this](pSub_t pSub,handler_t){ pSub->Detach(this); }); }
