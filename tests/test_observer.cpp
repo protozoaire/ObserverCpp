@@ -355,7 +355,7 @@ struct TestNoCopy
 };
 
 
-TEST_CASE("Testing _Subject1 / Attach, Detach") {
+TEST_CASE("Testing _Subject1[view] / Attach, Detach") {
 
     //_Subject1<typename E>
     struct A { int value; };
@@ -386,7 +386,33 @@ TEST_CASE("Testing _Subject1 / Attach, Detach") {
     CHECK(subA.Detach(&obs3)==false);//never attached fails
     CHECK(set.size()==1);
 
-    //bind
+}
+
+
+TEST_CASE("Testing _Subject1[data] / Attach, Detach") {
+
+    //_Subject1<typename E>
+    struct A { int value; };
+    using _subject1_t = Observer::_Subject1<A>;
+    using _observer1_t = Observer::_Observer1<A>;
+
+    //static object
+    CHECK(TestNoCopy<_subject1_t>::AssertNoCopy());
+    CHECK(TestNoCopy<_subject1_t>::AssertNoMove());
+   
+    //Attach
+    std::unordered_set<_observer1_t*> set;
+    _subject1_t subA(Observer::AbstractSetData<_observer1_t*>(std::move(set)));
+    _observer1_t obs; 
+    CHECK(subA.Attach(&obs)==true);
+    _observer1_t obs2;
+    CHECK(subA.Attach(&obs2)==true);
+    CHECK(subA.Attach(&obs2)==false);//already attached fails
+    
+    //Detach
+    CHECK(subA.Detach(&obs)==true);
+    _observer1_t obs3;
+    CHECK(subA.Detach(&obs3)==false);//never attached fails
 
 }
 
@@ -541,6 +567,7 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     using _subject1_t = Observer::_Subject1<A>;
     using _observer1_t = Observer::_Observer1<A>;
 
+    //impl: view
     std::unordered_set<_observer1_t*> set;
     _subject1_t subA(Observer::abstract_set_view(set));
     _observer1_t obs; 
@@ -555,6 +582,10 @@ TEST_CASE("Testing _Subject1 / backend rebinding") {
     _observer1_t obs2;
     CHECK(subA.Attach(&obs2)==true);
     CHECK(subA.Attach(&obs)==false);//already here
+
+    //impl: data
+    _subject1_t subA2(Observer::AbstractSetData<_observer1_t*>(std::move(set)));
+    CHECK(subA2.Attach(&obs)==false);//already here
 
 }
 
@@ -738,3 +769,5 @@ TEST_CASE("Testing AbstractSetVariant") {
     CHECK(_set.size()==2);
 
 }
+
+

@@ -444,14 +444,22 @@ struct _Subject1
             "ERROR Observer::_Subject1<.>: events must be defined (not just declared)");
        
         using pObs_t = pObs_T<E>;
-        using observers_t = AbstractSet<pObs_t>;
+
+        using observers_view_t = AbstractSet<pObs_t>;
+        using observers_data_t = AbstractSetData<pObs_t>;
+        using observers_t = AbstractSetVariant<pObs_t>;
         observers_t observers;
         
     public:
 
-    explicit _Subject1(observers_t observers_)
+    explicit _Subject1(observers_view_t observers_)
     : NoCopy()
     , observers(observers_)
+    {}
+
+    explicit _Subject1(observers_data_t&& observers_)
+    : NoCopy()
+    , observers(std::move(observers_))
     {}
 
     bool Attach(pObs_t pObs) 
@@ -464,10 +472,14 @@ struct _Subject1
     { observers.Signal([e,this](pObs_t pObs){ pObs->onEvent(e,this); }); }
     /* Note: not const; Observers may respond by Detaching. */
 
-    _Subject1& bindObserverSet(observers_t observers_)
+    _Subject1& bindObserverSet(observers_view_t observers_)
     { observers = observers_; return *this; }
 
+    _Subject1& bindObserverSet(observers_data_t observers_)
+    { observers = std::move(observers_); return *this; }
+
 };  
+
 
 template <typename E>
 struct _Observer1
