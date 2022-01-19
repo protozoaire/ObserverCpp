@@ -672,3 +672,40 @@ TEST_CASE("Testing _Subject") {
     CHECK(n==3);
 
 }
+
+
+TEST_CASE("Testing _AbstractContainerData and derived") {
+
+    using cont_t = std::unordered_set<int>;
+    auto pOpaque = Observer::make_opaque(cont_t());
+    static_cast<cont_t*>(pOpaque.get())->insert(3);
+    auto Set = Observer::AbstractSetData<int>(cont_t());
+    CHECK(Set.Append(4)==true);
+
+    //with custom abstract_set_view object
+    auto asv = [](cont_t& set){ return Observer::abstract_set_view(set); };
+    auto Set2 = Observer::AbstractSetData<int>(cont_t(),asv);
+    CHECK(Set2.Append(4)==true);
+
+    //with custom abstract_set_view policy container
+    struct ASV {
+        auto operator()(cont_t& set) {
+            return Observer::abstract_set_view(set);
+        }
+    };
+    auto Set3 = Observer::AbstractSetData<int>(cont_t(),ASV());
+    CHECK(Set3.Append(4)==true);
+
+    //No copy, just move
+    using Set_t = Observer::AbstractSetData<int>;
+    CHECK(std::is_copy_constructible<Set_t>::value == false);
+    CHECK(std::is_copy_assignable<Set_t>::value == false);
+    CHECK(std::is_move_constructible<Set_t>::value == true);
+    CHECK(std::is_move_assignable<Set_t>::value == true);
+
+
+ 
+    
+
+
+}

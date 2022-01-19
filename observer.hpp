@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <type_traits>
 #include <memory>
-#include <variant>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -191,6 +190,36 @@ struct NoCopy
 //
 
 
+using opaque_data_ptr_t = std::unique_ptr<void,std::function<void(void*)>>;
+
+template <typename C>
+auto make_opaque(C&& c)
+{
+    constexpr auto opaque_delete = [](void* ptr){ delete static_cast<C*>(ptr); };
+    constexpr auto new_opaque = [](C&& c){ return static_cast<void*>(new C(std::move(c))); };
+    return opaque_data_ptr_t(new_opaque(std::move(c)),opaque_delete);
+}
+
+template <typename AC>
+struct _AbstractContainerData
+{
+    opaque_data_ptr_t pData;
+    AC methods;
+
+    template <typename C, typename ACV>
+    explicit _AbstractContainerData(C&& cont_, ACV acv)
+    : pData(make_opaque(std::move(cont_)))
+    , methods(acv(*static_cast<C*>(pData.get())))
+    {}
+
+};
+
+
+//
+//
+//
+
+
 template <typename T>
 struct AbstractSet
 {
@@ -210,7 +239,31 @@ AbstractSet<T> abstract_set_view(std::unordered_set<T>& set)
     auto signal = [&set](F f){ for(auto t : set) f(t); };
     return {append,remove,signal};
 };
+
+
+template <typename T>
+struct AbstractSetData
+: private _AbstractContainerData<AbstractSet<T>>
+{
+    bool Append(T t) { return this->methods.Append(t); }
+    bool Remove(T t) { return this->methods.Remove(t); }
+    using F = std::function<void(T)>;
+    void Signal(F f) { return this->methods.Signal(f); }
+
+    private:
+    using ASet_t = AbstractSet<T>;
+    using impl_t = _AbstractContainerData<ASet_t>;
+
+    public:
+    using impl_t::_AbstractContainerData;
+
+    template <typename C>
+    explicit AbstractSetData(C&& set_)
+    : impl_t(std::move(set_),&abstract_set_view<T>)
+    {}
  
+};
+
 
 //
 //
