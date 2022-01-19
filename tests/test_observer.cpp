@@ -386,6 +386,8 @@ TEST_CASE("Testing _Subject1 / Attach, Detach") {
     CHECK(subA.Detach(&obs3)==false);//never attached fails
     CHECK(set.size()==1);
 
+    //bind
+
 }
 
 
@@ -655,5 +657,18 @@ TEST_CASE("Testing _Subject") {
     CHECK(subABC.Attach(A(),&obs)==true);
     CHECK(subABC.Detach(B(),&obs)==false);//never attached
     CHECK(subABC.Detach(A(),&obs)==true);
-  
+    
+    //backend rebinding
+    CHECK(subABC.Attach(A(),&obs)==true);
+    int n = 0;
+    auto h = [&n](A a){ n+=a.value; };
+    static_cast<Observer::_Observer1<A>*>(&obs)->bindHandlerSubject1(h);
+    subABC.Notify(A{3});
+    CHECK(n==3);
+    _set1<A> _setA2;
+    auto SetA2 = Observer::abstract_set_view(_setA2);
+    subABC.bindObserverSet(SetA2);
+    subABC.Notify(A{3});
+    CHECK(n==3);
+
 }

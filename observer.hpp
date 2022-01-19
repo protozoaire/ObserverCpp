@@ -481,6 +481,10 @@ struct _Subject
         template <typename E>
         using observers_T = AbstractSet<pObs_T<E>>;
     
+        template <typename E>
+        auto _this() { return static_cast<_Subject1<E>*>(this); }
+
+
     public:
 
     explicit _Subject(observers_T<Events> ... Sets)
@@ -498,7 +502,7 @@ struct _Subject
             "ERROR Observer::_Subject<...>::Attach<E>: event E does not belong to subject events");
         static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
             "ERROR Observer::_Subject<...>::Attach<E>(pObs): event E does not belong to pObs events");
-        return static_cast<_Subject1<E>*>(this)->Attach(pObs);
+        return _this<E>()->Attach(pObs);
     }
 
     template <typename E, typename ... Evs>
@@ -508,7 +512,23 @@ struct _Subject
             "ERROR Observer::_Subject<...>::Detach<E>: event E does not belong to subject events");
         static_assert(IsSupportedEvent<E,SubjectEvents<Evs...>>::value,
             "ERROR Observer::_Subject<...>::Detach<E>(pObs): event E does not belong to pObs events");
-        return static_cast<_Subject1<E>*>(this)->Detach(pObs);
+        return _this<E>()->Detach(pObs);
+    }
+    
+    template <typename E>
+    void Notify(E e)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::Notify<E>: event E does not belong to subject events");
+        return _this<E>()->Notify(e);
+    }
+    
+    template <typename E>
+    _Subject& bindObserverSet(observers_T<E> observers_)
+    {
+        static_assert(IsSupportedEvent<E,SubjectEvents<Events...>>::value,
+            "ERROR Observer::_Subject<...>::bindObserverSet<E>: event E does not belong to subject events");
+        _this<E>()->bindObserverSet(observers_); return *this;
     }
 
 };
