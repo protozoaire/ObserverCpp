@@ -217,6 +217,8 @@ struct _AbstractContainerData
     : pData(std::move(pData_)),methods(methods_)
     {}
 
+    _AbstractContainerData() = default;
+
 };
 
 
@@ -349,6 +351,55 @@ template <typename ASVs, typename ... Cs>
 auto abstract_set_tuple_view(std::tuple<Cs...>& tset)
 {
     return abstract_set_tuple_view<ASVs>(std::get<Cs>(tset)...);
+}
+
+
+template <typename ... Ts>
+struct AbstractSetDataTuple
+{
+    private:
+    using impl_t = std::tuple<AbstractSetData<Ts>...>;
+    impl_t impl;
+
+    public:
+    AbstractSetDataTuple() = default;
+
+    AbstractSetDataTuple(AbstractSetData<Ts>&& ... sets)
+    : impl(std::move(sets) ...)
+    {}
+
+    template <typename T>
+    AbstractSetDataTuple& Set(AbstractSetData<T>&& s)
+    { std::get<AbstractSetData<T>>(impl) = std::move(s); return *this; }
+    
+    template <typename T>
+    AbstractSetData<T> const& Get(T) const
+    { return std::get<AbstractSetData<T>>(impl); }
+
+};
+
+template <typename ... Ts>
+AbstractSetDataTuple<Ts...> abstract_set_tuple_data(std::unordered_set<Ts>&& ... sets)
+{
+    return { abstract_set_data(std::move(sets)) ... };
+};
+
+template <typename ... Cs>
+auto abstract_set_tuple_data(std::tuple<Cs...>&& tset)
+{
+    return abstract_set_tuple_data(std::move(std::get<Cs>(tset))...);
+}
+
+template <typename ASDs, typename ... Cs>
+AbstractSetDataTuple<typename Cs::value_type ...> abstract_set_tuple_data(Cs&& ... sets)
+{
+    return { ASDs()(std::move(sets)) ... };
+};
+
+template <typename ASDs, typename ... Cs>
+auto abstract_set_tuple_data(std::tuple<Cs...>&& tset)
+{
+    return abstract_set_tuple_data<ASDs>(std::move(std::get<Cs>(tset))...);
 }
 
 
@@ -763,9 +814,13 @@ struct _Subject
     explicit _Subject(observers_data_T<Events>&& ... Sets)
     : _Subject1<Events>(std::move(Sets)) ...
     {}
-   
+  
     explicit _Subject(AbstractSetTuple<pObs_T<Events>...> TSet)
     : _Subject1<Events>(TSet.Get(pObs_T<Events>())) ... 
+    {}
+    
+    explicit _Subject(AbstractSetDataTuple<pObs_T<Events>...>&& TSet)
+    : _Subject1<Events>(std::move(TSet.Get(pObs_T<Events>()))) ... 
     {}
 
     template <typename E>

@@ -196,6 +196,67 @@ TEST_CASE("Testing AbstractSetTuple") {
 }
 
 
+struct ASDs
+{
+    template <typename T>
+    Observer::AbstractSetData<T> operator()(std::unordered_set<T>&& set)
+    {
+        return Observer::abstract_set_data(std::move(set));
+    }
+};
+
+
+TEST_CASE("Testing AbstractSetDataTuple") {
+
+    //AbstractSetTuple<typename ... Ts>
+    using TSet_t = Observer::AbstractSetDataTuple<int,char>;
+    //ction from already AbstractSetData;
+    {
+        std::unordered_set<int> set_int;
+        std::unordered_set<char> set_char;
+        
+        auto Set_int = Observer::abstract_set_data(std::move(set_int));
+        auto Set_char = Observer::abstract_set_data(std::move(set_char));
+        TSet_t TSet(std::move(Set_int),std::move(Set_char));
+    }
+
+    //ction using abstract_set_tuple_data
+    //1. supported impls
+    {
+        std::unordered_set<int> set_int;
+        std::unordered_set<char> set_char;
+
+        TSet_t TSet = Observer::abstract_set_tuple_data(std::move(set_int),std::move(set_char));
+    }
+    //2. tuple of supported impls
+    {
+        std::tuple<std::unordered_set<int>, std::unordered_set<char>> tset;
+        TSet_t TSet = Observer::abstract_set_tuple_data(std::move(tset));
+    }
+    //3. custom impls
+    {
+        std::unordered_set<int> set_int;
+        std::unordered_set<char> set_char;
+        TSet_t TSet = Observer::abstract_set_tuple_data<ASDs>(std::move(set_int),std::move(set_char));
+    }
+    //4. tuple of custom impls
+    {
+        std::tuple<std::unordered_set<int>, std::unordered_set<char>> tset;
+        TSet_t TSet = Observer::abstract_set_tuple_data<ASDs>(std::move(tset));
+    }
+    //Ops
+    {
+        auto Set_int = Observer::abstract_set_data(std::unordered_set<int>());
+        auto Set_char = Observer::abstract_set_data(std::unordered_set<char>());
+        TSet_t TSet;
+        TSet.Set(std::move(Set_int)).Set(std::move(Set_char));//chaining Set(.)
+        auto const& Set_int2 = TSet.Get(int());//Get
+        (void) Set_int2;
+    }
+
+}
+
+
 TEST_CASE("Testing AbstractMap") {
 
     //AbstractMap<typename K, typename V>
@@ -772,6 +833,10 @@ TEST_CASE("Testing _Subject") {
     _subject_t sub(std::move(dA),std::move(dB),std::move(dC));
     dA = Observer::abstract_set_data(std::move(_setA));
     sub.bindObserverSet(A(),std::move(dA));
+
+    //ctor from AbstractSetDataTuple
+    _tset<A,B,C> tset2;
+    auto subABC2(Observer::abstract_set_tuple_data(std::move(tset2)));
 
 }
 
