@@ -217,8 +217,6 @@ struct _AbstractContainerData
     : pData(std::move(pData_)),methods(methods_)
     {}
 
-    _AbstractContainerData() = default;
-
 };
 
 
@@ -268,7 +266,11 @@ struct AbstractSetData
     explicit AbstractSetData(C&& set_)
     : impl_t(std::move(set_),&abstract_set_view<T>)
     {}
- 
+
+    AbstractSetData()
+    : AbstractSetData(std::unordered_set<T>())
+    {}
+
 };
 
 
@@ -362,10 +364,12 @@ struct AbstractSetDataTuple
     impl_t impl;
 
     public:
-    AbstractSetDataTuple() = default;
-
     AbstractSetDataTuple(AbstractSetData<Ts>&& ... sets)
     : impl(std::move(sets) ...)
+    {}
+
+    AbstractSetDataTuple()
+    : AbstractSetDataTuple(AbstractSetData<Ts>() ...)
     {}
 
     template <typename T>
@@ -450,6 +454,10 @@ struct AbstractConstMapData
     : impl_t(std::move(map_),&abstract_const_map_view<K,V>)
     {}
  
+    AbstractConstMapData()
+    : AbstractConstMapData(std::unordered_map<K,V>())
+    {}
+
 };
 
 
@@ -540,6 +548,10 @@ struct AbstractMapData
 
     explicit AbstractMapData(AbstractConstMapData<K,V>&& cmap)
     : impl_t(std::move(cmap.pData),MapEmbedConstMap(cmap.methods))
+    {}
+
+    AbstractMapData()
+    : AbstractMapData(std::unordered_map<K,V>())
     {}
 
 };
@@ -663,7 +675,7 @@ struct _Subject1
     , observers(observers_)
     {}
 
-    explicit _Subject1(observers_data_t&& observers_)
+    explicit _Subject1(observers_data_t&& observers_ = observers_data_t())
     : NoCopy()
     , observers(std::move(observers_))
     {}
@@ -739,6 +751,9 @@ struct _Observer1
     
     _Observer1& bindSubjectHandlers(subject_handlers_const_data_t&& subject_handlers_)
     { subject_handlers = MapEmbedConstMap(std::move(subject_handlers_)); return *this; }
+
+    _Observer1& bindSubjectHandlers()
+    { return bindSubjectHandlers(subject_handlers_data_t()); }
 
     _Observer1& bindHandlerSubject1(handler_t handler = [](E){}, sId_t sId = nullptr)
     {
@@ -821,6 +836,10 @@ struct _Subject
     
     explicit _Subject(AbstractSetDataTuple<pObs_T<Events>...>&& TSet)
     : _Subject1<Events>(std::move(TSet.Get(pObs_T<Events>()))) ... 
+    {}
+
+    _Subject()
+    : _Subject(observers_data_T<Events>() ...)
     {}
 
     template <typename E>
@@ -926,7 +945,11 @@ struct _Observer
             "ERROR Observer::_Observer<...>::bindSubjectHandlers<E>(const_data): event E does not belong to observer events");
         _this<E>()->bindSubjectHandlers(std::move(subject_handlers_)); return *this;
     }
-    
+   
+    template <typename E>
+    _Observer& bindSubjectHandlers(E e)
+    { return bindSubjectHandlers(e, subject_handlers_data_T<E>()); }
+
     template <typename E, typename H>
     _Observer& bindHandlerSubject1(E, H handler = [](E){}, SubjectID<E> sId = nullptr)
     {
@@ -968,6 +991,79 @@ struct _Observer
     }
 
 }; 
+
+
+//
+//
+//
+
+
+template <typename ... Events>
+struct SubjectConnect
+{
+
+    template <typename E>
+    SubjectID<E> subject_id(E)
+    { return pSub; }
+
+    template <typename E>
+    bool Attach(ObserverID<E> oID)
+    { return pSub->Attach(E(),oID); }
+
+    template <typename E>
+    bool Detach(ObserverID<E> oID)
+    { return pSub->Detach(E(),oID); }
+
+    private:
+        
+        _Subject<Events...>* pSub = nullptr;
+
+    protected:
+   
+    explicit SubjectConnect(_Subject<Events...>* pSub_ = nullptr)
+    : pSub(pSub_)
+    {}
+
+    SubjectConnect& reset(_Subject<Events...>* pSub_)
+    { pSub = pSub_; return *this; }
+
+    ~SubjectConnect() = default;
+
+};
+
+
+template <typename ... Events>
+struct ObserverConnect
+{
+    
+    template <typename E>
+    ObserverID<E> observer_id(E)
+    { return pObs; }
+
+    template <typename E>
+    bool Subscribe(SubjectID<E> sID)
+    { return pObs->Subscribe(E(),sID); }
+
+    template <typename E>
+    bool Unsubscribe(SubjectID<E> sID)
+    { return pObs->Unsubscribe(E(),sID); }
+
+    private:
+        
+        _Observer<Events...>* pObs = nullptr;
+
+    protected:
+   
+    explicit ObserverConnect(_Observer<Events...>* pObs_ = nullptr)
+    : pObs(pObs_)
+    {}
+
+    ObserverConnect& reset(_Observer<Events...>* pObs_)
+    { pObs = pObs_; return *this; }
+
+    ~ObserverConnect() = default;
+
+};
 
 
 }//close Observer

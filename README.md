@@ -24,6 +24,7 @@ and detach.
 
         public:
         //custom subject interface forwarding to _sub
+        //or inherit Observer::SubjectConnect<A,B> to expose the default
 
     };
 
@@ -43,7 +44,8 @@ to Subjects.
         Observer::_Observer<A,C> _obs;
 
         public:
-        //possibly, nothing
+        //custom observer interface forwarding to _obs
+        //or inherit Observer::ObserverConnect<A,C> to expose the default
 
     };
 
@@ -58,19 +60,19 @@ When a designated Subject is passed as an extra argument, the Observer will auto
 If an Observer wants to track several Subjects on the same event, and auto-detach from all of them when destroyed, 
 it needs to back against a map container to store these identities. It also makes it possible to define behaviour on a per-Subject basis.
 
-    _obs.bindSubjectHandlers<default_map_container>(A());
+    _obs.bindSubjectHandlers(A()); //default map container is used
 
 Then, it might use
 
-    _obs.Define(A(),subjectId-A-2,h);
+    _obs.Define(A(),subjectId_A_2,h);
 
-to create or reset behaviour for `subjectId-A-2` on event `A`, or
+to create or reset behaviour for `subjectId_A_2` on event `A`, or
 
-    _obs.Remove(A(),subjectId-A-2);
+    _obs.Remove(A(),subjectId_A_2);
 
 to clean up the entry after successfully detached.
 
-Here `subjectId-A-2` is an opaque Subject identity. It contains the address of a `_Subject<A>` resource, which only `_Observer<A>` resources 
+Here `subjectId_A_2` is an opaque Subject identity. It contains the address of a `_Subject<A>` resource, which only `_Observer<A>` resources 
 can access. (And the other way around for opaque Observer identities.)
 
 The following are equivalent ways to enter the Observer protocol.
@@ -78,7 +80,8 @@ The following are equivalent ways to enter the Observer protocol.
     _sub.Attach(A(),opaqueObsId);
     _obs.Subscribe(A(),opaqueSubId);
 
-Subject and Observer resources can neither be copied nor moved. They may be wrapped with smart pointers to be passed around.
+Subject and Observer resources can neither be copied nor moved. They may be wrapped with smart pointers to be passed around. 
+Observer resources should be packaged with the state edited by their handlers.
 
 
 ## Installation
@@ -143,7 +146,7 @@ between subscription and behaviour. Then the idea of dynamic callbacks is comple
 
 ## Documentation
 
-Is available in the doc folder.
+See the `doc` folder.
 
 
 ## Future Work

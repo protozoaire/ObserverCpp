@@ -1159,3 +1159,97 @@ TEST_CASE("Testing ObjectID / multiple events") {
     CHECK(setA.size()==0);
 
 }
+
+
+TEST_CASE("Testing Defaults") {
+
+    using namespace Observer;
+
+    AbstractSetData<int> asd;
+    _Subject1<int> sub;
+    AbstractSetDataTuple<int,char> asdt;
+    _Subject<int,char> sub2;
+
+    AbstractMapData<int,char> amd;
+    AbstractConstMapData<int,char> acmd;
+    _Observer1<int> obs;
+    obs.bindSubjectHandlers();
+    _Observer<int,char> obs2;
+    obs2.bindSubjectHandlers(int());
+
+}
+
+
+struct A {};
+struct B {};
+
+struct BenevolentSubject
+: Observer::SubjectConnect<A,B>
+{
+    private:
+    Observer::_Subject<A,B> sub;
+
+    public:
+    void Clicked()
+    { sub.Notify(A()); }
+
+    BenevolentSubject()
+    : Observer::SubjectConnect<A,B>(nullptr)
+    , sub()
+    {
+        reset(&sub);    
+    }
+
+};
+
+struct C {};
+
+struct InterestedObserver
+: Observer::ObserverConnect<A,C>
+{
+    int n = 0;
+    std::shared_ptr<Observer::_Observer<A,C>> pObs;
+
+    public:
+    InterestedObserver()
+    : Observer::ObserverConnect<A,C>(nullptr)
+    , pObs(new Observer::_Observer<A,C>())
+    {
+        reset(pObs.get());
+    }
+
+    void bindHandler()
+    { pObs->bindHandlerSubject1(A(),[this](A){ ++n; }); }
+
+};
+
+
+TEST_CASE("Testing Connect mixins") {
+
+    BenevolentSubject Sub;
+    InterestedObserver Obs;
+
+    CHECK(Sub.Attach(Obs.observer_id(A()))==true); 
+    //Sub.Attach(Obs.observer_id(C()));//does not compile: Sub not supporting C
+    CHECK(Sub.Attach(Obs.observer_id(A()))==false);//already 
+    CHECK(Sub.Detach(Obs.observer_id(A()))==true); 
+    
+    CHECK(Obs.Subscribe(Sub.subject_id(A()))==true); 
+    CHECK(Obs.Subscribe(Sub.subject_id(A()))==false);//already 
+    //Obs.Subscribe(Sub.subject_id(B()));//does not compile: Obs not supporting B
+    CHECK(Obs.Unsubscribe(Sub.subject_id(A()))==true);
+
+    CHECK(Sub.Attach(Obs.observer_id(A()))==true); 
+    Sub.Clicked(); 
+    CHECK(Obs.n==0);
+    Obs.bindHandler();
+    Sub.Clicked(); 
+    CHECK(Obs.n==1);
+    auto Obs2 = Obs;
+    CHECK(Obs2.pObs.get()==Obs.pObs.get());
+    CHECK(Obs2.n==1);
+    Sub.Clicked(); 
+    CHECK(Obs.n==2);
+    CHECK(Obs2.n==1);//indeed the handler is bound to Obs only! 
+
+}
