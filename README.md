@@ -1,8 +1,8 @@
 # ObserverCpp
 
-ObserverCpp is an implementation of the popular [Observer](https://en.wikipedia.org/wiki/Observer_pattern) design pattern in C++.
+ObserverCpp is an implementation of the [Observer](https://en.wikipedia.org/wiki/Observer_pattern) design pattern in C++.
 
-In this pattern, Subjects expose interface for Observers to register and get instant notification of change. 
+In this pattern, Subjects expose interface for Observers to connect and receive instant notification of change. 
 
 
 ## Usage
@@ -14,69 +14,71 @@ Subject events are modeled as trivially copyable data of a certain type. For ins
         int x,y;
     };
 
-A Subject exposing events `A` and `B` owns a resource `_Subject<A,B>` and forwards the interface necessary for Observers of `A`, `B` or both to attach
+A Subject exposing events `A` and `B` owns a resource `_Subject<A,B>` and forwards the interface necessary for Observers of `A`, `B` or both, to attach
 and detach.
 
     class BenevolentSubject
     {
         private:
-        std::unique_ptr<_Subject<A,B>> pSub;
+        Observer::_Subject<A,B> _sub;
 
         public:
-        //custom subject interface forwarding to pSub
+        //custom subject interface forwarding to _sub
 
-    };
-
-Or it may just inherit the base mixin `Subject<A,B>` to expose the conventional interface.
-
-    class BenevolentSubject
-    : public Subject<A,B>   //holds _Subject<A,B> internally
-    {
-        ...
     };
 
 Then the Subject needs to install the `Notify` calls in its own code as appropriate.
 
-An Observer interested in event `A` and some other event `C` owns a resource `_Observer<A,C>` from which messages may come in once it has subscribed
+    void BenevolentSubject::clicked() {
+        //update state
+        _sub.Notify(A{...});
+    }
+
+An Observer interested in event `A` and `C` owns a resource `_Observer<A,C>` from which messages flow in once it has subscribed
 to Subjects. 
 
     class InterestedObserver
     {
         private:
-        std::unique_ptr<_Observer<A,C>> pObs;
+        Observer::_Observer<A,C> _obs;
 
         public:
         //possibly, nothing
 
     };
 
-Then it needs to install on its resource what happens when event `A` or `C` come along.
-In most cases, this is it:
+Then it needs to set up on its resource what happens on event `A` or `C`.
+In most cases, it just sets one handler per event:
 
-    pObs->bindHandlerSubject1(A(),h);
+    _obs.bindHandlerSubject1(A(),h);
 
-Here `h` is any callable taking an `A` argument.
+Here `h` is any callable taking an `A` argument. The empty `A` object passed as a first argument is only to indicate the target event.
 When a designated Subject is passed as an extra argument, the Observer will automatically detach from this Subject when destroyed.
 
-If an Observer wants to track several Subjects on the same event, and automatically detach from all of them when destroyed, 
+If an Observer wants to track several Subjects on the same event, and auto-detach from all of them when destroyed, 
 it needs to back against a map container to store these identities. It also makes it possible to define behaviour on a per-Subject basis.
 
-    pObs->bindSubjectHandlers<default_map_container>(A());
+    _obs.bindSubjectHandlers<default_map_container>(A());
 
 Then, it might use
 
-    pObs->Define(A(),subjectId-A-2,h);
+    _obs.Define(A(),subjectId-A-2,h);
 
 to create or reset behaviour for `subjectId-A-2` on event `A`, or
 
-    pObs->Remove(A(),subjectId-A-2);
+    _obs.Remove(A(),subjectId-A-2);
 
 to clean up the entry after successfully detached.
 
-Indeed, Subject and Observer abstract identities may be used on all Subject or Observer methods if it is so wished not the disclose the address of
-the respective resources.
+Here `subjectId-A-2` is an opaque Subject identity. It contains the address of a `_Subject<A>` resource, which only `_Observer<A>` resources 
+can access. (And the other way around for opaque Observer identities.)
 
-For example, a `SubjectID<A>` object contains the address of a `_Subject` resource, which only `_Observer<A>` resources can read and use. 
+The following are equivalent ways to enter the Observer protocol.
+
+    _sub.Attach(A(),opaqueObsId);
+    _obs.Subscribe(A(),opaqueSubId);
+
+Subject and Observer resources can neither be copied nor moved. They may be wrapped with smart pointers to be passed around.
 
 
 ## Installation
@@ -99,7 +101,7 @@ A backend is either owned or unowned by the resource. When it is unowned, the re
 while the actual container remains managed by the resource host. When it is owned, the abstract view becomes an abstract *wrapper*, carrying the same
 interface, yet holding the actual data as an opaque internal.
 
-To give a taste of how easy it is to support custom backends, here is what defines the abstract set interface in use (this is the view version):
+To give a taste of how easy it is to support custom backends, here is what defines the abstract set interface at use (this is the view version):
 
     template <typename T>
     struct AbstractSet
@@ -124,7 +126,7 @@ Then, the support for the default `std::unordered_set` is just this:
         return {append,remove,signal};
     };
 
-(The wrapper version uses this factory method too.)
+(The wrapper version reuses the same factory function.)
 
 
 ## Related Work
@@ -141,10 +143,9 @@ between subscription and behaviour. Then the idea of dynamic callbacks is comple
 
 ## Documentation
 
-In wait of a full documentation, this [companion article]() on my blog should make the code easy to understand and use.
+Is available in the doc folder.
 
 
 ## Future Work
 
-- formal documentation
 - thread-safety
