@@ -110,7 +110,7 @@ because the container is moved in.
     template <typename K, typename V>
     AbstractConstMapData<K,V> abstract_const_map_data(std::unordered_map<K,V>&& map)
 
-The above types stores the container internally as an opaque type, while at the same time manufacturing a view bound to it. 
+The above types store the container internally as an opaque type, while at the same time manufacturing a view bound to it. 
 The default view generators are used, by default. 
 If one wants to use different view generators, or add support for new
 containers, one again passes the view generator as a template parameter; for instance,
