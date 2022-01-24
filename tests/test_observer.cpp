@@ -196,16 +196,6 @@ TEST_CASE("Testing AbstractSetTuple") {
 }
 
 
-struct ASDs
-{
-    template <typename T>
-    Observer::AbstractSetData<T> operator()(std::unordered_set<T>&& set)
-    {
-        return Observer::abstract_set_data(std::move(set));
-    }
-};
-
-
 TEST_CASE("Testing AbstractSetDataTuple") {
 
     //AbstractSetTuple<typename ... Ts>
@@ -237,12 +227,12 @@ TEST_CASE("Testing AbstractSetDataTuple") {
     {
         std::unordered_set<int> set_int;
         std::unordered_set<char> set_char;
-        TSet_t TSet = Observer::abstract_set_tuple_data<ASDs>(std::move(set_int),std::move(set_char));
+        TSet_t TSet = Observer::abstract_set_tuple_data<ASVs>(std::move(set_int),std::move(set_char));
     }
     //4. tuple of custom impls
     {
         std::tuple<std::unordered_set<int>, std::unordered_set<char>> tset;
-        TSet_t TSet = Observer::abstract_set_tuple_data<ASDs>(std::move(tset));
+        TSet_t TSet = Observer::abstract_set_tuple_data<ASVs>(std::move(tset));
     }
     //Ops
     {
@@ -1251,5 +1241,45 @@ TEST_CASE("Testing Connect mixins") {
     Sub.Clicked(); 
     CHECK(Obs.n==2);
     CHECK(Obs2.n==1);//indeed the handler is bound to Obs only! 
+
+}
+
+struct ASV
+{
+    template <typename T>
+    Observer::AbstractSet<T> operator()(std::unordered_set<T>&)
+    {
+        return {};
+    }
+};
+
+
+struct AMV
+{
+    template <typename K, typename V>
+    Observer::AbstractMap<K,V> operator()(std::unordered_map<K,V>&)
+    {
+        return {};
+    }
+};
+
+
+struct ACMV
+{
+    template <typename K, typename V>
+    Observer::AbstractConstMap<K,V> operator()(std::unordered_map<K,V>&)
+    {
+        return {};
+    }
+};
+
+    
+TEST_CASE("Testing Wrapper Custom Impl Constructor") {
+
+    using namespace Observer;
+
+    auto Set = abstract_set_data<ASV>(std::unordered_set<int>());
+    auto Map = abstract_map_data<AMV>(std::unordered_map<char,int>());
+    auto ConstMap = abstract_const_map_data<ACMV>(std::unordered_map<char,int>());
 
 }

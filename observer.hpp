@@ -279,6 +279,11 @@ AbstractSetData<T> abstract_set_data(std::unordered_set<T>&& set)
 { return AbstractSetData<T>(std::move(set)); }
 
 
+template <typename ASV, typename T>
+AbstractSetData<T> abstract_set_data(std::unordered_set<T>&& set)
+{ return AbstractSetData<T>(std::move(set),ASV()); }
+
+
 template <typename T>
 struct AbstractSetVariant
 {
@@ -394,16 +399,17 @@ auto abstract_set_tuple_data(std::tuple<Cs...>&& tset)
     return abstract_set_tuple_data(std::move(std::get<Cs>(tset))...);
 }
 
-template <typename ASDs, typename ... Cs>
+
+template <typename ASVs, typename ... Cs>
 AbstractSetDataTuple<typename Cs::value_type ...> abstract_set_tuple_data(Cs&& ... sets)
 {
-    return { ASDs()(std::move(sets)) ... };
+    return { abstract_set_data<ASVs>(std::move(sets)) ... };
 };
 
-template <typename ASDs, typename ... Cs>
+template <typename ASVs, typename ... Cs>
 auto abstract_set_tuple_data(std::tuple<Cs...>&& tset)
 {
-    return abstract_set_tuple_data<ASDs>(std::move(std::get<Cs>(tset))...);
+    return abstract_set_tuple_data<ASVs>(std::move(std::get<Cs>(tset))...);
 }
 
 
@@ -464,6 +470,11 @@ struct AbstractConstMapData
 template <typename K, typename V>
 AbstractConstMapData<K,V> abstract_const_map_data(std::unordered_map<K,V>&& map)
 { return AbstractConstMapData<K,V>(std::move(map)); }
+
+
+template <typename ACMV, typename K, typename V>
+AbstractConstMapData<K,V> abstract_const_map_data(std::unordered_map<K,V>&& map)
+{ return AbstractConstMapData<K,V>(std::move(map),ACMV()); }
 
 
 template <typename K, typename V>
@@ -560,6 +571,11 @@ struct AbstractMapData
 template <typename K, typename V>
 AbstractMapData<K,V> abstract_map_data(std::unordered_map<K,V>&& map)
 { return AbstractMapData<K,V>(std::move(map)); }
+
+
+template <typename AMV, typename K, typename V>
+AbstractMapData<K,V> abstract_map_data(std::unordered_map<K,V>&& map)
+{ return AbstractMapData<K,V>(std::move(map),AMV()); }
 
 
 template <typename K, typename V>
